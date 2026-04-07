@@ -2,13 +2,6 @@ import { create } from 'zustand'
 import { toast as sonnerToast } from 'sonner'
 import type { ThemeConfig } from './types'
 
-// ═════════════════════════════════════════════════════════════════
-// MOCK DATA (Browser mode fallback)
-// ═════════════════════════════════════════════════════════════════
-const MOCK_POS_USERS = [
-  { sid: 'mock-1', code: 'ADMIN', name: 'Админ', password: '1234', role: 1 },
-  { sid: 'mock-2', code: 'CASHIER', name: 'Кассын ажилтан', password: '5678', role: 2 },
-]
 
 // ═════════════════════════════════════════════════════════════════
 // THEME STORE
@@ -212,17 +205,53 @@ export interface SyncData {
   posUsers: any[]
 }
 
+export interface BillItem {
+  menuSid: string
+  code: string
+  name: string
+  price: number
+  quantity: number
+  amount: number
+}
+
+export interface LocalPayment {
+  paymentType: number  // 1=cash, 2=card, 3=bank, 4=QR, 5=credit
+  amount: number
+}
+
+export interface LocalBill {
+  id: string
+  tableSid: string | null   // null = шууд борлуулалт
+  tableName: string
+  roomSid: string | null
+  cashierSid: string
+  cashierName: string
+  items: BillItem[]
+  subtotal: number
+  totalAmount: number
+  isPaid: boolean
+  openDate: string
+  closedDate: string | null
+  payments: LocalPayment[]
+  note: string | null
+}
+
 export interface PendingSale {
-  id: string // local UUID
+  id: string
   createdAt: string
-  items: any[]
+  closedAt: string
+  tableSid: string | null
+  tableDinnerSid: string | null
+  cashierSid: string
+  items: BillItem[]
+  payments: LocalPayment[]
   total: number
   uploaded: boolean
 }
 
 interface PosState {
-  isPaired: boolean              // Device pair хийгдсэн эсэх
-  posToken: string | null        // Device pairing token (Backend POS_TOKEN)
+  isPaired: boolean
+  posToken: string | null
   deviceId: number | null
   deviceCode: string | null
   deviceName: string | null
@@ -232,20 +261,27 @@ interface PosState {
   cashSession: CashSession | null
   syncData: SyncData
   pendingSales: PendingSale[]
+  openBills: LocalBill[]
 
-  activateDevice: (activationCode: string) => Promise<boolean>
+  activateDevice: (activationCode: string, adminCode: string, adminPassword: string) => Promise<boolean>
   unpairDevice: () => void
   restorePosSession: () => void
-  
-  posLogin: (password: string) => Promise<boolean>
+
+  posLogin: (code: string, password: string) => Promise<boolean>
   posLogout: () => void
-  
+
   openCash: (openingAmount: number) => Promise<boolean>
   closeCash: (closingAmount: number) => Promise<boolean>
-  
+
   syncFromServer: () => Promise<boolean>
   addPendingSale: (sale: PendingSale) => void
   uploadPendingSales: () => Promise<boolean>
+
+  // Open bills (ширээн дээрх нээлттэй тооцоо)
+  saveOpenBill: (bill: LocalBill) => void
+  payOpenBill: (billId: string, payments: LocalPayment[]) => void
+  deleteOpenBill: (billId: string) => void
+  loadOpenBills: () => Promise<void>
 }
 
 export const usePosStore = create<PosState>((set, get) => ({
@@ -270,6 +306,7 @@ export const usePosStore = create<PosState>((set, get) => ({
     posUsers: [],
   },
   pendingSales: [],
+  openBills: [],
 
   restorePosSession: () => {
     // Tauri environment шалгах
@@ -391,10 +428,10 @@ export const usePosStore = create<PosState>((set, get) => ({
     }).catch(() => {})
   },
 
-  activateDevice: async (activationCode) => {
+  activateDevice: async (activationCode, adminCode, adminPassword) => {
     const { api } = await import('./api')
     try {
-      const res = await api<any>('/pos/activate', { activationCode }, { showLoading: false, showError: false })
+      const res = await api<any>('/pos/activate', { activationCode, adminCode, adminPassword }, { showLoading: false, showError: false })
       // Response 2 бүтэцтэй: { ok:1, data: {pos,store,posUsers} } эсвэл { pos, store, posUsers }
       const d = res.data?.pos ? res.data : res
       if (d.pos) {
@@ -470,37 +507,30 @@ export const usePosStore = create<PosState>((set, get) => ({
     localStorage.removeItem('session')
   },
 
-  posLogin: async (password) => {
+  posLogin: async (code, password) => {
     const { isPaired } = get()
     if (!isPaired) return false
-    
-    // Password "9999" үргэлж амжилтгүй (mock test case)
-    if (password === '9999') {
-      return false
-    }
-    
-    // Offline login (plain password check - backend sends plain password)
+
+    // Offline login (code + password check)
     if (typeof window !== 'undefined' && (window as any).__TAURI__) {
       try {
         const db = await import('./pos-db')
-        
-        // PosUsers-аас хайх
+
         const users = await db.getPosUsers()
         if (users.length === 0) return false
-        
-        // Password-р олох (backend plain password илгээдэг)
-        const user = users.find((u: any) => u.password === password)
+
+        const user = users.find((u: any) => u.code === code && u.password === password)
         if (!user) return false
-        
+
         const posUser = {
           sid: user.sid,
           code: user.code,
           name: user.name,
           role: user.role,
         }
-        
+
         set({ posUser, cashSession: null })
-        
+
         await db.saveUserSession({
           userSid: posUser.sid,
           userName: posUser.name,
@@ -508,24 +538,21 @@ export const usePosStore = create<PosState>((set, get) => ({
           cashOpenedAt: null,
           cashOpeningAmount: null,
         })
-        
+
         return true
       } catch {
         return false
       }
     }
-    
+
     // Browser mode: localStorage fallback
     try {
       const saved = localStorage.getItem('session')
       if (saved) {
         const data = JSON.parse(saved)
         const posUsers = data.posUsers || []
-        
-        // Backend-аас ирсэн posUsers ашиглах, хоосон бол mock data ашиглах
-        const usersToCheck = posUsers.length > 0 ? posUsers : MOCK_POS_USERS
-        
-        const user = usersToCheck.find((u: any) => u.password === password)
+
+        const user = posUsers.find((u: any) => u.code === code && u.password === password)
         if (user) {
           const posUser = {
             sid: user.sid,
@@ -539,7 +566,7 @@ export const usePosStore = create<PosState>((set, get) => ({
         }
       }
     } catch {}
-    
+
     return false
   },
 
@@ -738,28 +765,40 @@ export const usePosStore = create<PosState>((set, get) => ({
 
   uploadPendingSales: async () => {
     const { api } = await import('./api')
-    const { pendingSales, deviceId, posToken } = get()
-    if (!deviceId || !posToken || pendingSales.length === 0) return true
+    const { pendingSales, posToken } = get()
+    if (!posToken || pendingSales.length === 0) return true
 
     try {
-      const res = await api<any>('/pos/sync/upload', {
-        deviceId,
-        posToken,
-        sales: pendingSales,
+      const sales = pendingSales.map(s => ({
+        localId: s.id,
+        tableDinnerSid: s.tableDinnerSid || s.tableSid || null,
+        cashierSid: s.cashierSid,
+        items: s.items.map(item => ({
+          menuSid: item.menuSid,
+          price: item.price,
+          quantity: item.quantity,
+        })),
+        payments: s.payments,
+        createdAt: s.createdAt,
+      }))
+
+      const res = await api<any>('/bill/uploadSales', {
+        posSid: posToken,
+        sales,
       }, { showLoading: false, showError: false })
-      if (res.ok) {
+
+      if (res.ok || res.data?.uploaded > 0) {
         set({ pendingSales: [] })
-        
-        // SQLite устгах
+
         if (typeof window !== 'undefined' && (window as any).__TAURI__) {
           import('./pos-db').then(async (db) => {
             const saleIds = pendingSales.map(s => s.id)
             await db.markSalesUploaded(saleIds)
             await db.clearUploadedSales()
+            await db.markBillsUploaded(saleIds)
           }).catch(() => {})
         }
-        
-        // localStorage
+
         localStorage.setItem('pending-sales', JSON.stringify([]))
         return true
       }
@@ -767,5 +806,75 @@ export const usePosStore = create<PosState>((set, get) => ({
     } catch {
       return false
     }
+  },
+
+  // ═══ Open Bills (ширээн дээрх нээлттэй тооцоо) ═══
+
+  saveOpenBill: (bill) => {
+    const bills = get().openBills.filter(b => b.id !== bill.id)
+    const updated = [...bills, bill]
+    set({ openBills: updated })
+
+    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+      import('./pos-db').then(db => db.saveOpenBill(bill)).catch(() => {})
+    }
+    localStorage.setItem('open-bills', JSON.stringify(updated))
+  },
+
+  payOpenBill: (billId, payments) => {
+    const bill = get().openBills.find(b => b.id === billId)
+    if (!bill) return
+
+    const now = new Date().toISOString()
+    const closedBill = { ...bill, isPaid: true, closedDate: now, payments }
+
+    // openBills-с хасах
+    const remaining = get().openBills.filter(b => b.id !== billId)
+    set({ openBills: remaining })
+    localStorage.setItem('open-bills', JSON.stringify(remaining))
+
+    // pendingSales руу шилжүүлэх
+    const sale: PendingSale = {
+      id: closedBill.id,
+      createdAt: closedBill.openDate,
+      closedAt: now,
+      tableSid: closedBill.tableSid,
+      tableDinnerSid: closedBill.tableSid,
+      cashierSid: closedBill.cashierSid,
+      items: closedBill.items,
+      payments: closedBill.payments,
+      total: closedBill.totalAmount,
+      uploaded: false,
+    }
+    get().addPendingSale(sale)
+
+    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+      import('./pos-db').then(db => db.closeBill(billId, payments)).catch(() => {})
+    }
+  },
+
+  deleteOpenBill: (billId) => {
+    const remaining = get().openBills.filter(b => b.id !== billId)
+    set({ openBills: remaining })
+    localStorage.setItem('open-bills', JSON.stringify(remaining))
+
+    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+      import('./pos-db').then(db => db.deleteOpenBill(billId)).catch(() => {})
+    }
+  },
+
+  loadOpenBills: async () => {
+    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+      try {
+        const db = await import('./pos-db')
+        const bills = await db.getOpenBills()
+        set({ openBills: bills })
+        return
+      } catch {}
+    }
+    try {
+      const saved = localStorage.getItem('open-bills')
+      if (saved) set({ openBills: JSON.parse(saved) })
+    } catch {}
   },
 }))

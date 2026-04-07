@@ -16,6 +16,9 @@ export default function PosLoginPage() {
   const { alertError, confirm, showLoading, hideLoading, toastSuccess } = useAlertStore()
   
   const [activationCode, setActivationCode] = useState("")
+  const [adminCode, setAdminCode] = useState("")
+  const [adminPassword, setAdminPassword] = useState("")
+  const [userCode, setUserCode] = useState("")
   const [password, setPassword] = useState("")
 
   useEffect(() => {
@@ -23,21 +26,31 @@ export default function PosLoginPage() {
     usePosStore.getState().restorePosSession()
   }, [])
 
-  // Device Pairing: Activation Code оруулах
+  // Device Pairing: Activation Code + Админ баталгаажуулалт
   const handleActivate = async () => {
     if (!activationCode.trim()) {
       alertError("Идэвхжүүлэх код оруулна уу")
       return
     }
+    if (!adminCode.trim()) {
+      alertError("Админ нэвтрэх нэр оруулна уу")
+      return
+    }
+    if (!adminPassword.trim()) {
+      alertError("Админ нууц үг оруулна уу")
+      return
+    }
 
     showLoading("Төхөөрөмж баталгаажуулж байна...")
     try {
-      const success = await activateDevice(activationCode.trim())
+      const success = await activateDevice(activationCode.trim(), adminCode.trim(), adminPassword.trim())
       hideLoading()
-      
+
       if (success) {
         toastSuccess("Төхөөрөмж амжилттай баталгаажлаа")
         setActivationCode("")
+        setAdminCode("")
+        setAdminPassword("")
       } else {
         alertError("Баталгаажуулалт амжилтгүй", "Код буруу эсвэл хүчингүй байна")
       }
@@ -47,8 +60,12 @@ export default function PosLoginPage() {
     }
   }
 
-  // User Login: Нууц үг оруулах (paired device дээр)
+  // User Login: Код + Нууц үг (paired device дээр)
   const handleLogin = async () => {
+    if (!userCode.trim()) {
+      alertError("Нэвтрэх код оруулна уу")
+      return
+    }
     if (!password.trim()) {
       alertError("Нууц үг оруулна уу")
       return
@@ -56,12 +73,11 @@ export default function PosLoginPage() {
 
     showLoading("Нэвтэрч байна...")
     try {
-      const success = await posLogin(password)
+      const success = await posLogin(userCode.trim(), password)
       hideLoading()
-      
+
       if (success) {
         toastSuccess("Амжилттай нэвтэрлээ")
-        // POS Desktop flow: cash session шалгаад шилжүүлэх
         const { cashSession } = usePosStore.getState()
         if (cashSession) {
           router.replace("/sale")
@@ -69,7 +85,7 @@ export default function PosLoginPage() {
           router.replace("/cash")
         }
       } else {
-        alertError("Нэвтрэх амжилтгүй", "Нууц үг буруу байна")
+        alertError("Нэвтрэх амжилтгүй", "Код эсвэл нууц үг буруу байна")
       }
     } catch (e: any) {
       hideLoading()
@@ -140,7 +156,7 @@ export default function PosLoginPage() {
               <Label htmlFor="activationCode">Идэвхжүүлэх код</Label>
               <Input
                 id="activationCode"
-                placeholder="Идэвхжүүлэх код оруулна уу!"
+                placeholder="Идэвхжүүлэх код оруулна уу"
                 value={activationCode}
                 onChange={(e) => setActivationCode(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -149,8 +165,33 @@ export default function PosLoginPage() {
               />
             </div>
 
-            <Button 
-              className="w-full" 
+            <Separator />
+
+            <div className="space-y-2">
+              <Label htmlFor="adminCode">Админ нэвтрэх нэр</Label>
+              <Input
+                id="adminCode"
+                placeholder="Админ код"
+                value={adminCode}
+                onChange={(e) => setAdminCode(e.target.value)}
+                onKeyDown={handleKeyDown}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="adminPassword">Админ нууц үг</Label>
+              <Input
+                id="adminPassword"
+                type="password"
+                placeholder="••••••"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                onKeyDown={handleKeyDown}
+              />
+            </div>
+
+            <Button
+              className="w-full"
               onClick={handleActivate}
             >
               <Lock className="h-4 w-4 mr-2" />
@@ -158,8 +199,20 @@ export default function PosLoginPage() {
             </Button>
           </div>
         ) : (
-          // ═══ User Login: Password ═══
+          // ═══ User Login: Code + Password ═══
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="userCode">Нэвтрэх код</Label>
+              <Input
+                id="userCode"
+                placeholder="Код оруулна уу"
+                value={userCode}
+                onChange={(e) => setUserCode(e.target.value)}
+                onKeyDown={handleKeyDown}
+                autoFocus
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="password">Нууц үг</Label>
               <Input
@@ -169,7 +222,6 @@ export default function PosLoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={handleKeyDown}
-                autoFocus
               />
             </div>
 

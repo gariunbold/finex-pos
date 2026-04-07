@@ -180,6 +180,27 @@ async function createTables() {
     )
   `)
 
+  // Open bills (ширээн дээрх нээлттэй тооцоо)
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS open_bills (
+      id TEXT PRIMARY KEY,
+      table_sid TEXT,
+      table_name TEXT,
+      room_sid TEXT,
+      cashier_sid TEXT NOT NULL,
+      cashier_name TEXT NOT NULL,
+      items_json TEXT NOT NULL DEFAULT '[]',
+      payments_json TEXT NOT NULL DEFAULT '[]',
+      subtotal REAL DEFAULT 0,
+      total_amount REAL DEFAULT 0,
+      is_paid INTEGER DEFAULT 0,
+      open_date TEXT NOT NULL,
+      closed_date TEXT,
+      note TEXT,
+      uploaded INTEGER DEFAULT 0
+    )
+  `)
+
   // Indexes
   await database.execute('CREATE INDEX IF NOT EXISTS idx_menus_group ON menus(group_sid)')
   await database.execute('CREATE INDEX IF NOT EXISTS idx_menu_prices_menu ON menu_prices(menu_sid)')
@@ -187,6 +208,8 @@ async function createTables() {
   await database.execute('CREATE INDEX IF NOT EXISTS idx_tables_room ON tables(room_sid)')
   await database.execute('CREATE INDEX IF NOT EXISTS idx_pos_users_code ON pos_users(code)')
   await database.execute('CREATE INDEX IF NOT EXISTS idx_pending_sales_uploaded ON pending_sales(uploaded)')
+  await database.execute('CREATE INDEX IF NOT EXISTS idx_open_bills_table ON open_bills(table_sid)')
+  await database.execute('CREATE INDEX IF NOT EXISTS idx_open_bills_paid ON open_bills(is_paid)')
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -468,4 +491,121 @@ export async function markSalesUploaded(saleIds: string[]) {
 export async function clearUploadedSales() {
   const database = await getDb()
   await database.execute('DELETE FROM pending_sales WHERE uploaded = 1')
+}
+
+// ═══════════════════════════════════════════════════════════
+// OPEN BILLS операцууд (ширээн дээрх нээлттэй тооцоо)
+// ═══════════════════════════════════════════════════════════
+
+export async function saveOpenBill(bill: {
+  id: string
+  tableSid: string | null
+  tableName: string
+  roomSid: string | null
+  cashierSid: string
+  cashierName: string
+  items: any[]
+  payments: any[]
+  subtotal: number
+  totalAmount: number
+  isPaid: boolean
+  openDate: string
+  closedDate: string | null
+  note: string | null
+}) {
+  const database = await getDb()
+  await database.execute(
+    `INSERT OR REPLACE INTO open_bills (id, table_sid, table_name, room_sid, cashier_sid, cashier_name,
+      items_json, payments_json, subtotal, total_amount, is_paid, open_date, closed_date, note, uploaded)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0)`,
+    [
+      bill.id, bill.tableSid, bill.tableName, bill.roomSid,
+      bill.cashierSid, bill.cashierName,
+      JSON.stringify(bill.items), JSON.stringify(bill.payments),
+      bill.subtotal, bill.totalAmount,
+      bill.isPaid ? 1 : 0, bill.openDate, bill.closedDate, bill.note,
+    ]
+  )
+}
+
+export async function getOpenBills(): Promise<any[]> {
+  const database = await getDb()
+  const rows = await database.select<any[]>('SELECT * FROM open_bills WHERE is_paid = 0 ORDER BY open_date')
+  return rows.map(row => ({
+    id: row.id,
+    tableSid: row.table_sid,
+    tableName: row.table_name,
+    roomSid: row.room_sid,
+    cashierSid: row.cashier_sid,
+    cashierName: row.cashier_name,
+    items: JSON.parse(row.items_json || '[]'),
+    payments: JSON.parse(row.payments_json || '[]'),
+    subtotal: row.subtotal,
+    totalAmount: row.total_amount,
+    isPaid: false,
+    openDate: row.open_date,
+    closedDate: null,
+    note: row.note,
+  }))
+}
+
+export async function getOpenBillByTable(tableSid: string): Promise<any | null> {
+  const database = await getDb()
+  const rows = await database.select<any[]>(
+    'SELECT * FROM open_bills WHERE table_sid = $1 AND is_paid = 0 LIMIT 1', [tableSid]
+  )
+  if (rows.length === 0) return null
+  const row = rows[0]
+  return {
+    id: row.id,
+    tableSid: row.table_sid,
+    tableName: row.table_name,
+    roomSid: row.room_sid,
+    cashierSid: row.cashier_sid,
+    cashierName: row.cashier_name,
+    items: JSON.parse(row.items_json || '[]'),
+    payments: JSON.parse(row.payments_json || '[]'),
+    subtotal: row.subtotal,
+    totalAmount: row.total_amount,
+    isPaid: false,
+    openDate: row.open_date,
+    closedDate: null,
+    note: row.note,
+  }
+}
+
+export async function closeBill(billId: string, payments: any[]) {
+  const database = await getDb()
+  await database.execute(
+    `UPDATE open_bills SET is_paid = 1, closed_date = $1, payments_json = $2 WHERE id = $3`,
+    [new Date().toISOString(), JSON.stringify(payments), billId]
+  )
+}
+
+export async function getClosedUnuploadedBills(): Promise<any[]> {
+  const database = await getDb()
+  const rows = await database.select<any[]>('SELECT * FROM open_bills WHERE is_paid = 1 AND uploaded = 0')
+  return rows.map(row => ({
+    id: row.id,
+    tableSid: row.table_sid,
+    tableName: row.table_name,
+    cashierSid: row.cashier_sid,
+    items: JSON.parse(row.items_json || '[]'),
+    payments: JSON.parse(row.payments_json || '[]'),
+    totalAmount: row.total_amount,
+    openDate: row.open_date,
+    closedDate: row.closed_date,
+  }))
+}
+
+export async function markBillsUploaded(billIds: string[]) {
+  const database = await getDb()
+  for (const id of billIds) {
+    await database.execute('DELETE FROM open_bills WHERE id = $1 AND is_paid = 1', [id])
+  }
+}
+
+export async function deleteOpenBill(billId: string) {
+  const database = await getDb()
+  await database.execute('DELETE FROM open_bills WHERE id = $1', [billId])
 }
