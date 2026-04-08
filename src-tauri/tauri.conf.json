@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "FinEx POS",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "com.finex.pos",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devUrl": "http://localhost:3001/login",
+    "devUrl": "http://localhost:3001",
     "frontendDist": "../out"
   },
   "app": {

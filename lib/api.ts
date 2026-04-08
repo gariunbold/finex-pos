@@ -3,14 +3,15 @@ import type { AxiosRequestConfig } from 'axios'
 import { useAlertStore } from './store'
 
 // ── Axios instance ──
-// Tauri production mode-д rewrites ажиллахгүй тул backend URL шууд ашиглана
+// Static export (output: "export") тохиргоотой учраас rewrites ажиллахгүй
+// Бүх горимд backend URL шууд ашиглана
 function getBaseURL(): string {
   if (typeof window !== 'undefined' && (window as any).__TAURI__) {
     // Tauri mode: backend-руу шууд холбогдоно
-    return localStorage.getItem('api-base-url') || 'http://localhost:8080'
+    return localStorage.getItem('api-base-url') || 'https://finex.app.mn/api'
   }
   // Browser dev mode: Next.js rewrites ашиглана
-  return '/api'
+  return 'https://finex.app.mn/api'
 }
 
 const http = axios.create({

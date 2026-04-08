@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { toast as sonnerToast } from 'sonner'
 import type { ThemeConfig } from './types'
+import { log } from 'console'
 
 
 // ═════════════════════════════════════════════════════════════════
@@ -433,6 +434,7 @@ export const usePosStore = create<PosState>((set, get) => ({
     try {
       const res = await api<any>('/pos/activate', { activationCode, adminCode, adminPassword }, { showLoading: false, showError: false })
       // Response 2 бүтэцтэй: { ok:1, data: {pos,store,posUsers} } эсвэл { pos, store, posUsers }
+      console.log('[ACTIVATE] Response:', res)
       const d = res.data?.pos ? res.data : res
       if (d.pos) {
         const { pos, store, posUsers } = d
