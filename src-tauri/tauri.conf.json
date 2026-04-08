@@ -26,6 +26,15 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all"
+    "targets": "all",
+    "createUpdaterArtifacts": "v1Compatible"
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/gariunbold/finex-pos/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM0RkNCNjRDNjg1QTQyN0MKUldSOFFscG9UTGI4Tk5BcTdtWk5iUTJpUzdST1NqaW1XVUJzcytYQTd2VUt5LzkxWTBaS3lTQ1IK"
+    }
   }
 }
