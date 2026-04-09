@@ -13,6 +13,7 @@ import { toMoney } from "@/lib/format"
 import {
   Search, ShoppingCart, Trash2, Plus, Minus, Download, Upload, LogOut,
   DollarSign, LayoutGrid, Store, Save, ArrowLeft, Banknote, CreditCard, QrCode,
+  Coffee, Users,
 } from "lucide-react"
 
 type SaleMode = "menu" | "tables"
@@ -55,6 +56,7 @@ export default function PosSalePage() {
   }, [saleMode, selectedRoomSid, syncData.rooms])
 
   const billTotal = billItems.reduce((sum, item) => sum + item.amount, 0)
+  const billItemCount = billItems.reduce((sum, item) => sum + item.quantity, 0)
 
   // ═══ Menu functions ═══
 
@@ -115,11 +117,9 @@ export default function PosSalePage() {
   const handleTableClick = (table: any) => {
     const existingBill = getTableBill(table.sid)
     if (existingBill) {
-      // Завгүй ширээ — тооцоо ачаалах
       setBillItems([...existingBill.items])
       setCurrentBillId(existingBill.id)
     } else {
-      // Чөлөөт ширээ — шинэ тооцоо
       setBillItems([])
       setCurrentBillId(null)
     }
@@ -187,13 +187,11 @@ export default function PosSalePage() {
     const payments: LocalPayment[] = [{ paymentType, amount }]
 
     if (currentTableSid && currentBillId) {
-      // Ширээний тооцоо төлөх
       payOpenBill(currentBillId, payments)
       toastSuccess(`${currentTableName} — төлбөр амжилттай`)
       setPaymentOpen(false)
       handleBackToTables()
     } else {
-      // Шууд борлуулалт
       const saleId = `sale-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
       addPendingSale({
         id: saleId,
@@ -242,30 +240,39 @@ export default function PosSalePage() {
   return (
     <div className="flex h-full bg-background">
       {/* ═══ Left Panel ═══ */}
-      <div className="flex-1 flex flex-col border-r">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="p-4 border-b space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="text-sm">
-              <div className="font-medium">{deviceName}</div>
-              <div className="text-muted-foreground">{posUser?.name}</div>
+        <div className="border-b bg-card">
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                <Coffee className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold leading-tight">{deviceName}</div>
+                <div className="text-sm text-muted-foreground leading-tight">{posUser?.name}</div>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant={saleMode === "menu" && !isTableBill ? "default" : "outline"}
-                onClick={() => handleSwitchMode("menu")}
-              >
-                <Store className="h-4 w-4 mr-2" />
-                Шууд
-              </Button>
-              <Button
-                variant={saleMode === "tables" || isTableBill ? "default" : "outline"}
-                onClick={() => handleSwitchMode("tables")}
-              >
-                <LayoutGrid className="h-4 w-4 mr-2" />
-                Ширээ
-              </Button>
-              <Separator orientation="vertical" className="h-9" />
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center rounded-lg border bg-muted/50 p-0.5">
+                <Button
+                  variant={saleMode === "menu" && !isTableBill ? "default" : "outline"}
+                  className={saleMode === "menu" && !isTableBill ? "" : "border-0 bg-transparent hover:bg-background"}
+                  onClick={() => handleSwitchMode("menu")}
+                >
+                  <Store className="h-4 w-4 mr-2" />
+                  Шууд
+                </Button>
+                <Button
+                  variant={saleMode === "tables" || isTableBill ? "default" : "outline"}
+                  className={saleMode === "tables" || isTableBill ? "" : "border-0 bg-transparent hover:bg-background"}
+                  onClick={() => handleSwitchMode("tables")}
+                >
+                  <LayoutGrid className="h-4 w-4 mr-2" />
+                  Ширээ
+                </Button>
+              </div>
+              <Separator orientation="vertical" className="h-7 mx-1" />
               <Button variant="outline" onClick={() => router.push("/sync")}>
                 <Download className="h-4 w-4" />
               </Button>
@@ -279,13 +286,19 @@ export default function PosSalePage() {
           </div>
 
           {showMenuPanel && (
-            <>
+            <div className="px-4 pb-3 space-y-2.5">
               {/* Ширээ-с буцах + хайлт */}
               <div className="flex gap-2">
                 {isTableBill && (
                   <Button variant="outline" onClick={handleBackToTables}>
                     <ArrowLeft className="h-4 w-4" />
                   </Button>
+                )}
+                {isTableBill && (
+                  <div className="flex items-center gap-2 rounded-lg bg-primary/10 border border-primary/20 px-3">
+                    <Users className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium text-primary">{currentTableName}</span>
+                  </div>
                 )}
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -298,8 +311,8 @@ export default function PosSalePage() {
                 </div>
               </div>
 
-              {/* Menu groups */}
-              <div className="flex gap-2 overflow-x-auto pb-1 slim-scroll">
+              {/* Menu groups - pill style */}
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5 slim-scroll">
                 <Button
                   variant={selectedGroupSid === null ? "default" : "outline"}
                   onClick={() => setSelectedGroupSid(null)}
@@ -316,64 +329,86 @@ export default function PosSalePage() {
                   </Button>
                 ))}
               </div>
-            </>
+            </div>
           )}
 
           {saleMode === "tables" && !isTableBill && (
-            <div className="flex gap-2 overflow-x-auto pb-1 slim-scroll">
-              {syncData.rooms.map((room: any) => (
-                <Button
-                  key={room.sid}
-                  variant={selectedRoomSid === room.sid ? "default" : "outline"}
-                  onClick={() => setSelectedRoomSid(room.sid)}
-                >
-                  {room.name}
-                </Button>
-              ))}
+            <div className="px-4 pb-3">
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5 slim-scroll">
+                {syncData.rooms.map((room: any) => (
+                  <Button
+                    key={room.sid}
+                    variant={selectedRoomSid === room.sid ? "default" : "outline"}
+                    onClick={() => setSelectedRoomSid(room.sid)}
+                  >
+                    {room.name}
+                  </Button>
+                ))}
+              </div>
             </div>
           )}
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 slim-scroll bg-muted/30">
           {showMenuPanel ? (
             /* ═══ Menu Grid ═══ */
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 content-start">
-              {filteredMenus.map((menu: any) => (
-                <Card
-                  key={menu.sid}
-                  className="p-3 cursor-pointer hover:border-primary transition-colors"
-                  onClick={() => addMenuItem(menu)}
-                >
-                  <div className="font-medium text-sm">{menu.name}</div>
-                  <div className="text-xs text-muted-foreground">{menu.code}</div>
-                  <div className="text-sm font-medium mt-2">{toMoney(menu.price || 0)}</div>
-                </Card>
-              ))}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 content-start">
+              {filteredMenus.map((menu: any) => {
+                const inBill = billItems.find(item => item.menuSid === menu.sid)
+                return (
+                  <Card
+                    key={menu.sid}
+                    className={`group relative p-3.5 cursor-pointer transition-all hover:shadow-md active:scale-[0.98] ${
+                      inBill
+                        ? "border-primary/40 bg-primary/5 shadow-sm"
+                        : "hover:border-primary/30"
+                    }`}
+                    onClick={() => addMenuItem(menu)}
+                  >
+                    {inBill && (
+                      <div className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold shadow-sm">
+                        {inBill.quantity}
+                      </div>
+                    )}
+                    <div className="font-medium text-sm leading-snug">{menu.name}</div>
+                    <div className="text-sm text-muted-foreground mt-0.5">{menu.code}</div>
+                    <div className="text-sm font-semibold mt-2 text-primary">{toMoney(menu.price || 0)}</div>
+                  </Card>
+                )
+              })}
+              {filteredMenus.length === 0 && (
+                <div className="col-span-full flex flex-col items-center justify-center py-16 text-muted-foreground">
+                  <Search className="h-10 w-10 mb-2 opacity-40" />
+                  <p className="text-sm">Цэс олдсонгүй</p>
+                </div>
+              )}
             </div>
           ) : (
             /* ═══ Table Grid ═══ */
-            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 content-start">
+            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 content-start">
               {filteredTables.map((table: any) => {
                 const bill = getTableBill(table.sid)
                 const isOccupied = !!bill
                 return (
                   <Card
                     key={table.sid}
-                    className={`p-4 cursor-pointer transition-colors text-center ${
+                    className={`p-4 cursor-pointer transition-all text-center hover:shadow-md active:scale-[0.98] ${
                       isOccupied
-                        ? "border-primary bg-primary/10 hover:bg-primary/20"
-                        : "hover:border-primary"
+                        ? "border-primary bg-primary/8 hover:bg-primary/12 shadow-sm"
+                        : "hover:border-primary/30"
                     }`}
                     onClick={() => handleTableClick(table)}
                   >
-                    <div className="font-medium">{table.name}</div>
+                    <div className={`font-semibold ${isOccupied ? "text-primary" : ""}`}>
+                      {table.name}
+                    </div>
                     {isOccupied ? (
-                      <div className="text-sm text-primary font-medium mt-1">
+                      <div className="text-sm text-primary font-bold mt-1.5">
                         {toMoney(bill.totalAmount)}
                       </div>
                     ) : (
-                      <div className="text-xs text-muted-foreground mt-1">Чөлөөтэй</div>
+                      <div className="text-sm text-muted-foreground mt-1.5">Чөлөөтэй</div>
                     )}
                   </Card>
                 )
@@ -384,15 +419,22 @@ export default function PosSalePage() {
       </div>
 
       {/* ═══ Right Panel: Bill ═══ */}
-      <div className="w-96 flex flex-col border-l bg-muted/30">
-        <div className="p-4 border-b">
+      <div className="w-[360px] flex flex-col border-l bg-card shadow-[-1px_0_3px_rgba(0,0,0,0.04)]">
+        {/* Bill header */}
+        <div className="px-4 py-3 border-b">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5" />
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                <ShoppingCart className="h-4 w-4 text-primary" />
+              </div>
               <div>
-                <h2 className="font-bold">Билл</h2>
-                {isTableBill && (
-                  <span className="text-xs text-primary">{currentTableName}</span>
+                <h2 className="font-bold text-sm leading-tight">Билл</h2>
+                {isTableBill ? (
+                  <span className="text-sm text-primary font-medium leading-tight">{currentTableName}</span>
+                ) : (
+                  <span className="text-sm text-muted-foreground leading-tight">
+                    {billItemCount > 0 ? `${billItemCount} зүйл` : "Хоосон"}
+                  </span>
                 )}
               </div>
             </div>
@@ -404,47 +446,60 @@ export default function PosSalePage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {/* Bill items */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-1.5 slim-scroll">
           {billItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-              <ShoppingCart className="h-12 w-12 mb-2" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/80 mb-3">
+                <ShoppingCart className="h-8 w-8 opacity-40" />
+              </div>
               <p className="text-sm">Билл хоосон байна</p>
+              <p className="text-sm text-muted-foreground/60 mt-1">Цэснээс зүйл сонгоно уу</p>
             </div>
           ) : (
-            billItems.map((item) => (
-              <Card key={item.menuSid} className="p-3 space-y-2">
-                <div>
-                  <div className="font-medium text-sm">{item.name}</div>
-                  <div className="text-xs text-muted-foreground">{item.code}</div>
+            billItems.map((item, index) => (
+              <div
+                key={item.menuSid}
+                className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors"
+              >
+                {/* Item number */}
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-sm font-semibold text-primary">
+                  {index + 1}
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" className="h-7 w-7 p-0" onClick={() => updateQuantity(item.menuSid, item.quantity - 1)}>
-                      <Minus className="h-3 w-3" />
-                    </Button>
-                    <span className="w-8 text-center font-medium">{item.quantity}</span>
-                    <Button variant="outline" className="h-7 w-7 p-0" onClick={() => updateQuantity(item.menuSid, item.quantity + 1)}>
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-muted-foreground">{toMoney(item.price)}</div>
-                    <div className="font-medium">{toMoney(item.amount)}</div>
-                  </div>
+                {/* Item info */}
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm leading-tight truncate">{item.name}</div>
+                  <div className="text-sm text-muted-foreground">{toMoney(item.price)} x {item.quantity}</div>
                 </div>
-              </Card>
+                {/* Quantity controls */}
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" className="h-7 w-7 p-0" onClick={() => updateQuantity(item.menuSid, item.quantity - 1)}>
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  <span className="w-7 text-center text-sm font-semibold">{item.quantity}</span>
+                  <Button variant="outline" className="h-7 w-7 p-0" onClick={() => updateQuantity(item.menuSid, item.quantity + 1)}>
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+                {/* Amount */}
+                <div className="text-sm font-semibold w-20 text-right">{toMoney(item.amount)}</div>
+              </div>
             ))
           )}
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t space-y-3 bg-background">
-          <div className="flex items-center justify-between text-lg font-bold">
-            <span>Нийт дүн:</span>
-            <span>{toMoney(billTotal)}</span>
+        <div className="border-t bg-card">
+          {/* Total */}
+          <div className="px-4 py-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Нийт дүн</span>
+              <span className="text-2xl font-bold tracking-tight">{toMoney(billTotal)}</span>
+            </div>
           </div>
           <Separator />
-          <div className="space-y-2">
+          {/* Actions */}
+          <div className="p-3 space-y-2">
             {isTableBill && (
               <Button
                 variant="outline"
@@ -457,7 +512,7 @@ export default function PosSalePage() {
               </Button>
             )}
             <Button
-              className="w-full"
+              className="w-full h-11 text-sm font-semibold"
               onClick={openPaymentDialog}
               disabled={billItems.length === 0}
             >
@@ -478,40 +533,48 @@ export default function PosSalePage() {
             <DialogTitle>Төлбөр хийх</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="text-center">
+          <div className="space-y-5">
+            {/* Total display */}
+            <div className="text-center py-3 rounded-xl bg-primary/5 border border-primary/10">
               <div className="text-sm text-muted-foreground">Нийт дүн</div>
-              <div className="text-3xl font-bold">{toMoney(billTotal)}</div>
+              <div className="text-3xl font-bold tracking-tight mt-1">{toMoney(billTotal)}</div>
             </div>
 
-            <Separator />
-
             {/* Төлбөрийн төрөл */}
-            <div className="flex gap-2">
-              <Button
-                variant={paymentType === 1 ? "default" : "outline"}
-                className="flex-1"
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${
+                  paymentType === 1
+                    ? "border-primary bg-primary/8"
+                    : "border-border hover:border-primary/30 hover:bg-muted/50"
+                }`}
                 onClick={() => setPaymentType(1)}
               >
-                <Banknote className="h-4 w-4 mr-2" />
-                Бэлэн
-              </Button>
-              <Button
-                variant={paymentType === 2 ? "default" : "outline"}
-                className="flex-1"
+                <Banknote className={`h-5 w-5 ${paymentType === 1 ? "text-primary" : "text-muted-foreground"}`} />
+                <span className={`text-sm font-medium ${paymentType === 1 ? "text-primary" : ""}`}>Бэлэн</span>
+              </button>
+              <button
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${
+                  paymentType === 2
+                    ? "border-primary bg-primary/8"
+                    : "border-border hover:border-primary/30 hover:bg-muted/50"
+                }`}
                 onClick={() => setPaymentType(2)}
               >
-                <CreditCard className="h-4 w-4 mr-2" />
-                Карт
-              </Button>
-              <Button
-                variant={paymentType === 4 ? "default" : "outline"}
-                className="flex-1"
+                <CreditCard className={`h-5 w-5 ${paymentType === 2 ? "text-primary" : "text-muted-foreground"}`} />
+                <span className={`text-sm font-medium ${paymentType === 2 ? "text-primary" : ""}`}>Карт</span>
+              </button>
+              <button
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${
+                  paymentType === 4
+                    ? "border-primary bg-primary/8"
+                    : "border-border hover:border-primary/30 hover:bg-muted/50"
+                }`}
                 onClick={() => setPaymentType(4)}
               >
-                <QrCode className="h-4 w-4 mr-2" />
-                QR
-              </Button>
+                <QrCode className={`h-5 w-5 ${paymentType === 4 ? "text-primary" : "text-muted-foreground"}`} />
+                <span className={`text-sm font-medium ${paymentType === 4 ? "text-primary" : ""}`}>QR</span>
+              </button>
             </div>
 
             {/* Дүн оруулах */}
@@ -521,11 +584,12 @@ export default function PosSalePage() {
                 placeholder="Дүн"
                 value={paymentAmount}
                 onChange={(e) => setPaymentAmount(e.target.value)}
-                className="text-center text-lg"
+                className="text-center text-lg font-medium"
               />
               {paymentType === 1 && changeAmount > 0 && (
-                <div className="text-center text-sm">
-                  Хариулт: <span className="font-bold text-primary">{toMoney(changeAmount)}</span>
+                <div className="text-center py-2 rounded-lg bg-muted/50">
+                  <span className="text-sm text-muted-foreground">Хариулт: </span>
+                  <span className="text-sm font-bold text-primary">{toMoney(changeAmount)}</span>
                 </div>
               )}
             </div>

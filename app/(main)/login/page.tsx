@@ -8,13 +8,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Smartphone, Lock, LogOut } from "lucide-react"
+import { Smartphone, Lock, LogOut, Monitor, User } from "lucide-react"
 
 export default function PosLoginPage() {
   const router = useRouter()
   const { isPaired, deviceName, storeName, activateDevice, unpairDevice, posLogin } = usePosStore()
   const { alertError, confirm, showLoading, hideLoading, toastSuccess } = useAlertStore()
-  
+
   const [activationCode, setActivationCode] = useState("")
   const [adminCode, setAdminCode] = useState("")
   const [adminPassword, setAdminPassword] = useState("")
@@ -116,20 +116,36 @@ export default function PosLoginPage() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center bg-muted/30">
-      <Card className="w-full max-w-md p-8 space-y-6">
-        <div className="space-y-2 text-center">
-          <h1 className="text-2xl font-bold">Finex POS</h1>
-          {!isPaired ? (
-            <p className="text-sm text-muted-foreground">
-              Төхөөрөмж баталгаажуулах
-            </p>
-          ) : (
-            <div className="space-y-1">
-              <p className="text-sm font-medium">{deviceName}</p>
-              <p className="text-xs text-muted-foreground">{storeName}</p>
-            </div>
-          )}
+    <div className="relative flex h-full items-center justify-center bg-muted/30 overflow-hidden">
+      {/* Background decoration */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-primary/5 animate-orb-1" />
+        <div className="absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-primary/5 animate-orb-2" />
+        <div className="absolute top-1/4 right-1/4 h-3 w-3 rounded-full bg-primary/20 animate-dot-pulse" />
+        <div className="absolute bottom-1/3 left-1/3 h-2 w-2 rounded-full bg-primary/15 animate-dot-pulse" style={{ animationDelay: "1s" }} />
+      </div>
+
+      <Card className="relative w-full max-w-md p-8 space-y-6 animate-card-in shadow-lg border-border/60">
+        {/* Logo / Branding */}
+        <div className="space-y-3 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+            <Monitor className="h-7 w-7 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Finex POS</h1>
+            {!isPaired ? (
+              <p className="text-sm text-muted-foreground mt-1">
+                Төхөөрөмж баталгаажуулах
+              </p>
+            ) : (
+              <div className="mt-2 inline-flex items-center gap-2 rounded-lg bg-primary/8 px-3 py-1.5">
+                <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                <span className="text-sm font-medium">{deviceName}</span>
+                <span className="text-sm text-muted-foreground">&middot;</span>
+                <span className="text-sm text-muted-foreground">{storeName}</span>
+              </div>
+            )}
+          </div>
         </div>
 
         <Separator />
@@ -137,11 +153,13 @@ export default function PosLoginPage() {
         {!isPaired ? (
           // ═══ Device Pairing: Activation Code ═══
           <div className="space-y-4">
-            <div className="bg-muted/50 p-4 rounded-lg space-y-2">
-              <div className="flex items-start gap-2">
-                <Smartphone className="h-5 w-5 text-primary mt-0.5" />
+            <div className="bg-primary/5 border border-primary/10 p-4 rounded-xl space-y-2">
+              <div className="flex items-start gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                  <Smartphone className="h-4 w-4 text-primary" />
+                </div>
                 <div className="flex-1 text-sm">
-                  <p className="font-medium mb-1">Хэрхэн баталгаажуулах вэ?</p>
+                  <p className="font-medium mb-1.5">Хэрхэн баталгаажуулах вэ?</p>
                   <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                     <li>Вэб систем рүү нэвтэрнэ</li>
                     <li>ПОС Төхөөрөмж цэснээс шинэ төхөөрөмж үүсгэнэ</li>
@@ -200,40 +218,48 @@ export default function PosLoginPage() {
           </div>
         ) : (
           // ═══ User Login: Code + Password ═══
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="userCode">Нэвтрэх код</Label>
-              <Input
-                id="userCode"
-                placeholder="Код оруулна уу"
-                value={userCode}
-                onChange={(e) => setUserCode(e.target.value)}
-                onKeyDown={handleKeyDown}
-                autoFocus
-              />
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="userCode"
+                  placeholder="Код оруулна уу"
+                  value={userCode}
+                  onChange={(e) => setUserCode(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  autoFocus
+                  className="pl-9"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="password">Нууц үг</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={handleKeyDown}
-              />
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="pl-9"
+                />
+              </div>
             </div>
 
             <div className="flex gap-2">
-              <Button 
-                className="flex-1" 
+              <Button
+                className="flex-1"
                 onClick={handleLogin}
               >
                 Нэвтрэх
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={handleUnpair}
               >
                 <LogOut className="h-4 w-4" />

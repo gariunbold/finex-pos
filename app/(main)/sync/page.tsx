@@ -26,18 +26,6 @@ export default function PosSyncPage() {
     setSyncing(true)
     showLoading("Өгөгдөл татаж байна...")
     
-    // Debug: localStorage шалгах
-    const session = localStorage.getItem('session')
-    console.log('[DEBUG] localStorage session:', session)
-    if (session) {
-      const parsed = JSON.parse(session)
-      console.log('[DEBUG] Parsed session:', {
-        isPaired: parsed.isPaired,
-        posToken: parsed.posToken,
-        deviceId: parsed.deviceId,
-      })
-    }
-    
     try {
       const success = await syncFromServer()
       hideLoading()
@@ -61,28 +49,37 @@ export default function PosSyncPage() {
   const hasSyncData = syncData.lastSyncAt !== null
 
   return (
-    <div className="flex h-full items-center justify-center bg-muted/30">
-      <Card className="w-full max-w-lg p-8 space-y-6">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Download className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold">Өгөгдөл татах</h1>
+    <div className="relative flex h-full items-center justify-center bg-muted/30 overflow-hidden">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-24 -left-24 h-72 w-72 rounded-full bg-primary/5 animate-orb-1" />
+        <div className="absolute -bottom-20 -right-20 h-64 w-64 rounded-full bg-primary/5 animate-orb-2" />
+      </div>
+
+      <Card className="relative w-full max-w-lg p-8 space-y-6 animate-card-in shadow-lg border-border/60">
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+              <Download className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Өгөгдөл татах</h1>
+              <p className="text-sm text-muted-foreground">
+                Server-ээс цэс, үнэ, хөнгөлөлт зэрэг өгөгдлийг татна
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Server-ээс цэс, үнэ, хөнгөлөлт зэрэг өгөгдлийг татна
-          </p>
         </div>
 
         <Separator />
 
         {hasSyncData ? (
           <div className="space-y-3">
-            <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center justify-between text-sm bg-primary/5 border border-primary/10 p-3 rounded-xl">
               <span className="text-muted-foreground">Сүүлд татсан:</span>
-              <span className="font-medium">{datetimeToStr(syncData.lastSyncAt)}</span>
+              <span className="font-semibold">{datetimeToStr(syncData.lastSyncAt)}</span>
             </div>
-            
-            <div className="grid grid-cols-2 gap-3 text-sm">
+
+            <div className="grid grid-cols-2 gap-2 text-sm">
               <SyncItem label="Цэсний бүлэг" count={syncData.menuGroups.length} />
               <SyncItem label="Цэс" count={syncData.menus.length} />
               <SyncItem label="Орц найрлага" count={syncData.menuRecipes.length} />
@@ -94,8 +91,10 @@ export default function PosSyncPage() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-8 text-center space-y-2">
-            <XCircle className="h-12 w-12 text-muted-foreground" />
+          <div className="flex flex-col items-center justify-center py-10 text-center space-y-3">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/80">
+              <XCircle className="h-8 w-8 text-muted-foreground/50" />
+            </div>
             <p className="text-sm text-muted-foreground">
               Өгөгдөл татаагүй байна
             </p>
@@ -105,16 +104,16 @@ export default function PosSyncPage() {
         <Separator />
 
         <div className="flex gap-2">
-          <Button 
-            className="flex-1" 
+          <Button
+            className="flex-1"
             onClick={handleSync}
             disabled={syncing}
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
             {syncing ? "Татаж байна..." : "Өгөгдөл татах"}
           </Button>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={handleBack}
           >
             Буцах
@@ -127,13 +126,13 @@ export default function PosSyncPage() {
 
 function SyncItem({ label, count }: { label: string; count: number }) {
   return (
-    <div className="flex items-center justify-between bg-muted/50 p-3 rounded-lg">
+    <div className="flex items-center justify-between bg-muted/40 border border-border/50 p-3 rounded-xl">
       <span className="text-muted-foreground">{label}</span>
       <div className="flex items-center gap-2">
         {count > 0 ? (
           <CheckCircle className="h-4 w-4 text-green-600" />
         ) : null}
-        <span className="font-medium">{count}</span>
+        <span className="font-semibold">{count}</span>
       </div>
     </div>
   )
