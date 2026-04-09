@@ -479,8 +479,9 @@ export const usePosStore = create<PosState>((set, get) => ({
         return true
       }
       return false
-    } catch {
-      return false
+    } catch (err: any) {
+      console.error('[ACTIVATE] Error:', err?.message || err, err?.response?.status, err?.response?.data)
+      throw err
     }
   },
 

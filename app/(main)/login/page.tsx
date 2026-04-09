@@ -56,7 +56,8 @@ export default function PosLoginPage() {
       }
     } catch (e: any) {
       hideLoading()
-      alertError("Алдаа гарлаа", e.message || "Сервертэй холбогдож чадсангүй")
+      const msg = e?.response?.data?.error || e?.message || "Сервертэй холбогдож чадсангүй"
+      alertError("Алдаа гарлаа", msg)
     }
   }
 
