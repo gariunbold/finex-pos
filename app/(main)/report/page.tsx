@@ -61,8 +61,8 @@ export default function PosReportPage() {
     let saleCount = allSales.length
 
     for (const sale of allSales) {
-      grandTotal += sale.total
-      for (const p of sale.payments) {
+      grandTotal += sale.total || 0
+      for (const p of (sale.payments || [])) {
         const existing = map.get(p.paymentType) || { count: 0, total: 0 }
         existing.count += 1
         existing.total += p.amount
@@ -82,7 +82,7 @@ export default function PosReportPage() {
     // menuSid → groupSid mapping
     const menuToGroup = new Map<string, string>()
     for (const menu of syncData.menus) {
-      menuToGroup.set(menu.sid, menu.groupSid)
+      menuToGroup.set(menu.sid, menu.groupSid || menu.group_sid)
     }
 
     // groupSid → name mapping
@@ -96,7 +96,7 @@ export default function PosReportPage() {
     let grandTotal = 0
 
     for (const sale of allSales) {
-      for (const item of sale.items) {
+      for (const item of (sale.items || [])) {
         const groupSid = menuToGroup.get(item.menuSid) || "unknown"
         const groupName = groupNames.get(groupSid) || "Бусад"
 

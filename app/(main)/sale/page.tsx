@@ -46,7 +46,11 @@ export default function PosSalePage() {
     if (!isPaired || !posUser) { router.replace("/login"); return }
     if (!cashSession) { router.replace("/cash"); return }
     loadOpenBills()
-  }, [isPaired, posUser, cashSession, router, loadOpenBills])
+    // syncData хоосон бол restore хийх
+    if (syncData.menus.length === 0) {
+      usePosStore.getState().restorePosSession()
+    }
+  }, [isPaired, posUser, cashSession, router, loadOpenBills, syncData.menus.length])
 
   // Эхний room автомат сонгох
   useEffect(() => {
@@ -55,8 +59,8 @@ export default function PosSalePage() {
     }
   }, [saleMode, selectedRoomSid, syncData.rooms])
 
-  const billTotal = billItems.reduce((sum, item) => sum + item.amount, 0)
-  const billItemCount = billItems.reduce((sum, item) => sum + item.quantity, 0)
+  const billTotal = billItems.reduce((sum, item) => item.isCancelled ? sum : sum + item.amount, 0)
+  const billItemCount = billItems.reduce((sum, item) => item.isCancelled ? sum : sum + item.quantity, 0)
 
   // ═══ Menu functions ═══
 
@@ -64,14 +68,25 @@ export default function PosSalePage() {
     const matchesSearch = !searchMenu ||
       menu.code?.toLowerCase().includes(searchMenu.toLowerCase()) ||
       menu.name?.toLowerCase().includes(searchMenu.toLowerCase())
-    const matchesGroup = !selectedGroupSid || menu.groupSid === selectedGroupSid
-    return matchesSearch && matchesGroup && menu.isActive !== 0
+    const menuGroupSid = menu.groupSid || menu.group_sid
+    const matchesGroup = !selectedGroupSid || menuGroupSid === selectedGroupSid
+    const isActive = menu.isActive ?? menu.is_active
+    return matchesSearch && matchesGroup && isActive !== 0
   })
 
   const addMenuItem = (menu: any) => {
     const existing = billItems.find(item => item.menuSid === menu.sid)
     if (existing) {
-      updateQuantity(menu.sid, existing.quantity + 1)
+      if (existing.isCancelled) {
+        // Цуцлагдсан барааг сэргээх
+        setBillItems(prev => prev.map(item =>
+          item.menuSid === menu.sid
+            ? { ...item, isCancelled: false, quantity: 1, amount: item.price }
+            : item
+        ))
+      } else {
+        updateQuantity(menu.sid, existing.quantity + 1)
+      }
     } else {
       const price = menu.price || 0
       setBillItems(prev => [...prev, {
@@ -83,11 +98,16 @@ export default function PosSalePage() {
 
   const updateQuantity = (menuSid: string, newQty: number) => {
     if (newQty <= 0) {
-      setBillItems(prev => prev.filter(item => item.menuSid !== menuSid))
+      // Soft delete — цуцлагдсан гэж тэмдэглэнэ
+      setBillItems(prev => prev.map(item =>
+        item.menuSid === menuSid
+          ? { ...item, isCancelled: true, quantity: 0, amount: 0 }
+          : item
+      ))
     } else {
       setBillItems(prev => prev.map(item =>
         item.menuSid === menuSid
-          ? { ...item, quantity: newQty, amount: item.price * newQty }
+          ? { ...item, quantity: newQty, amount: item.price * newQty, isCancelled: false }
           : item
       ))
     }
@@ -358,7 +378,7 @@ export default function PosSalePage() {
             /* ═══ Menu Grid ═══ */
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 content-start">
               {filteredMenus.map((menu: any) => {
-                const inBill = billItems.find(item => item.menuSid === menu.sid)
+                const inBill = billItems.find(item => item.menuSid === menu.sid && !item.isCancelled)
                 return (
                   <Card
                     key={menu.sid}
@@ -463,29 +483,56 @@ export default function PosSalePage() {
             billItems.map((item, index) => (
               <div
                 key={item.menuSid}
-                className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors"
+                className={`flex items-center gap-3 p-2.5 rounded-lg transition-colors ${
+                  item.isCancelled
+                    ? "bg-destructive/5 opacity-50"
+                    : "bg-muted/40 hover:bg-muted/60"
+                }`}
               >
                 {/* Item number */}
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-sm font-semibold text-primary">
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sm font-semibold ${
+                  item.isCancelled ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
+                }`}>
                   {index + 1}
                 </div>
                 {/* Item info */}
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm leading-tight truncate">{item.name}</div>
-                  <div className="text-sm text-muted-foreground">{toMoney(item.price)} x {item.quantity}</div>
+                  <div className={`font-medium text-sm leading-tight truncate ${item.isCancelled ? "line-through text-muted-foreground" : ""}`}>
+                    {item.name}
+                  </div>
+                  {item.isCancelled ? (
+                    <div className="text-sm text-destructive">Цуцлагдсан</div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">{toMoney(item.price)} x {item.quantity}</div>
+                  )}
                 </div>
-                {/* Quantity controls */}
-                <div className="flex items-center gap-1">
-                  <Button variant="outline" className="h-7 w-7 p-0" onClick={() => updateQuantity(item.menuSid, item.quantity - 1)}>
-                    <Minus className="h-3 w-3" />
+                {item.isCancelled ? (
+                  /* Сэргээх товч */
+                  <Button
+                    variant="outline"
+                    className="h-7 px-2 text-sm"
+                    onClick={() => setBillItems(prev => prev.map(i =>
+                      i.menuSid === item.menuSid ? { ...i, isCancelled: false, quantity: 1, amount: i.price } : i
+                    ))}
+                  >
+                    Сэргээх
                   </Button>
-                  <span className="w-7 text-center text-sm font-semibold">{item.quantity}</span>
-                  <Button variant="outline" className="h-7 w-7 p-0" onClick={() => updateQuantity(item.menuSid, item.quantity + 1)}>
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                </div>
-                {/* Amount */}
-                <div className="text-sm font-semibold w-20 text-right">{toMoney(item.amount)}</div>
+                ) : (
+                  <>
+                    {/* Quantity controls */}
+                    <div className="flex items-center gap-1">
+                      <Button variant="outline" className="h-7 w-7 p-0" onClick={() => updateQuantity(item.menuSid, item.quantity - 1)}>
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                      <span className="w-7 text-center text-sm font-semibold">{item.quantity}</span>
+                      <Button variant="outline" className="h-7 w-7 p-0" onClick={() => updateQuantity(item.menuSid, item.quantity + 1)}>
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    {/* Amount */}
+                    <div className="text-sm font-semibold w-20 text-right">{toMoney(item.amount)}</div>
+                  </>
+                )}
               </div>
             ))
           )}

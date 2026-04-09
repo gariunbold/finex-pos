@@ -213,6 +213,7 @@ export interface BillItem {
   price: number
   quantity: number
   amount: number
+  isCancelled?: boolean
 }
 
 export interface LocalPayment {
@@ -310,40 +311,39 @@ export const usePosStore = create<PosState>((set, get) => ({
   openBills: [],
 
   restorePosSession: () => {
-    // Tauri environment шалгах
-    if (typeof window === 'undefined' || !((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
-      // Browser mode - localStorage fallback
-      try {
-        const saved = localStorage.getItem('session')
-        if (saved) {
-          const data = JSON.parse(saved)
-          set({
-            isPaired: !!data.posToken,
-            posToken: data.posToken || null,
-            deviceId: data.deviceId || null,
-            deviceCode: data.deviceCode || null,
-            deviceName: data.deviceName || null,
-            storeId: data.storeId || null,
-            storeName: data.storeName || null,
-            posUser: data.posUser || null,
-            cashSession: data.cashSession || null,
-          })
-        }
+    // localStorage-аас бүх горимд restore хийнэ (Tauri + Browser)
+    try {
+      const saved = localStorage.getItem('session')
+      if (saved) {
+        const data = JSON.parse(saved)
+        set({
+          isPaired: !!data.posToken,
+          posToken: data.posToken || null,
+          deviceId: data.deviceId || null,
+          deviceCode: data.deviceCode || null,
+          deviceName: data.deviceName || null,
+          storeId: data.storeId || null,
+          storeName: data.storeName || null,
+          posUser: data.posUser || null,
+          cashSession: data.cashSession || null,
+        })
+      }
 
-        // Sync data restore
-        const syncSaved = localStorage.getItem('sync-data')
-        if (syncSaved) {
-          set({ syncData: JSON.parse(syncSaved) })
-        }
+      const syncSaved = localStorage.getItem('sync-data')
+      if (syncSaved) {
+        set({ syncData: JSON.parse(syncSaved) })
+      }
 
-        // Pending sales restore
-        const pendingSaved = localStorage.getItem('pending-sales')
-        if (pendingSaved) {
-          set({ pendingSales: JSON.parse(pendingSaved) })
-        }
-      } catch {}
-      return
+      const pendingSaved = localStorage.getItem('pending-sales')
+      if (pendingSaved) {
+        set({ pendingSales: JSON.parse(pendingSaved) })
+      }
+    } catch (e) {
+      console.error('[RESTORE] localStorage error:', e)
     }
+
+    // Tauri mode: SQLite-аас нэмэлт restore (async, localStorage дээр давхарлана)
+    if (typeof window === 'undefined' || !((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) return
     
     // Tauri mode - SQLite ашиглах
     import('./pos-db').then(async (db) => {
@@ -398,10 +398,15 @@ export const usePosStore = create<PosState>((set, get) => ({
           db.getPosUsers(),
         ])
 
-        // Menu дээр store price merge (SQLite-д хадгалагдсан price ашиглана)
+        // SQLite snake_case → camelCase + store price merge
         const menusWithPrice = menus.map((m: any) => {
           const storePrice = menuPrices.find((mp: any) => mp.menu_sid === m.sid)
-          return { ...m, price: storePrice?.price ?? m.price ?? 0 }
+          return {
+            ...m,
+            groupSid: m.group_sid || m.groupSid,
+            isActive: m.is_active ?? m.isActive ?? 1,
+            price: storePrice?.price ?? m.price ?? 0,
+          }
         })
 
         const lastSyncAt = await db.getLastSyncTime()
@@ -423,10 +428,10 @@ export const usePosStore = create<PosState>((set, get) => ({
         // Pending sales
         const pendingSales = await db.getPendingSales()
         set({ pendingSales })
-      } catch {
-        // SQLite restore failed - ignore
+      } catch (e) {
+        console.error('[RESTORE] SQLite restore error:', e)
       }
-    }).catch(() => {})
+    }).catch((e) => { console.error('[RESTORE] SQLite import error:', e) })
   },
 
   activateDevice: async (activationCode, adminCode, adminPassword) => {
