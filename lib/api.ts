@@ -82,7 +82,10 @@ async function tauriPost<T>(url: string, data?: any): Promise<T> {
     }
   } catch { /* ignore */ }
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Origin': 'https://finex.app.mn',
+  }
   if (authHeader) headers['Authorization'] = authHeader
 
   const response = await tf(`${API_BASE}${url}`, {
