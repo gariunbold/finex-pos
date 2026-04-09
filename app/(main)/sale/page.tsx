@@ -13,7 +13,7 @@ import { toMoney } from "@/lib/format"
 import {
   Search, ShoppingCart, Trash2, Plus, Minus, Download, Upload, LogOut,
   DollarSign, LayoutGrid, Store, Save, ArrowLeft, Banknote, CreditCard, QrCode,
-  Coffee, Users,
+  Coffee, Users, BarChart3,
 } from "lucide-react"
 
 type SaleMode = "menu" | "tables"
@@ -273,6 +273,9 @@ export default function PosSalePage() {
                 </Button>
               </div>
               <Separator orientation="vertical" className="h-7 mx-1" />
+              <Button variant="outline" onClick={() => router.push("/report")}>
+                <BarChart3 className="h-4 w-4" />
+              </Button>
               <Button variant="outline" onClick={() => router.push("/sync")}>
                 <Download className="h-4 w-4" />
               </Button>
@@ -359,7 +362,7 @@ export default function PosSalePage() {
                 return (
                   <Card
                     key={menu.sid}
-                    className={`group relative p-3.5 cursor-pointer transition-all hover:shadow-md active:scale-[0.98] ${
+                    className={`group relative overflow-visible p-3.5 cursor-pointer transition-all hover:shadow-md active:scale-[0.98] ${
                       inBill
                         ? "border-primary/40 bg-primary/5 shadow-sm"
                         : "hover:border-primary/30"
@@ -367,7 +370,7 @@ export default function PosSalePage() {
                     onClick={() => addMenuItem(menu)}
                   >
                     {inBill && (
-                      <div className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold shadow-sm">
+                      <div className="absolute -top-2.5 -right-2.5 flex h-7 min-w-7 px-1 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold shadow-md z-10">
                         {inBill.quantity}
                       </div>
                     )}
