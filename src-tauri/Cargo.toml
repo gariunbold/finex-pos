@@ -1,6 +1,6 @@
 [package]
 name = "finex-pos"
-version = "0.2.4"
+version = "0.2.5"
 description = "FinEx POS Desktop Application"
 authors = ["FinEx Team"]
 edition = "2021"
