@@ -2,31 +2,24 @@ import axios from 'axios'
 import type { AxiosRequestConfig } from 'axios'
 import { useAlertStore } from './store'
 
-// ── Tauri HTTP fetch wrapper ──
-// Tauri v2 production дээр browser XHR CORS-д блоклогддог
-// Тиймээс @tauri-apps/plugin-http-ийн fetch ашиглана
-let tauriFetch: typeof globalThis.fetch | null = null
-
-async function initTauriFetch() {
-  if (tauriFetch) return tauriFetch
-  if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
-    try {
-      const { fetch } = await import('@tauri-apps/plugin-http')
-      tauriFetch = fetch
-      return tauriFetch
-    } catch {
-      // Plugin байхгүй бол browser fetch ашиглана
-    }
-  }
-  return null
-}
-
 // ── Base URL ──
 const API_BASE = 'https://finex.app.mn/api'
 
 // ── Tauri mode шалгах ──
 function isTauri(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__
+  return typeof window !== 'undefined' && !!((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)
+}
+
+// ── Tauri Rust invoke POST ──
+// CORS байхгүй — Rust талаас шууд HTTP request хийнэ
+async function tauriPost<T>(url: string, data?: any): Promise<T> {
+  const { invoke } = await import('@tauri-apps/api/core')
+
+  const fullUrl = `${API_BASE}${url}`
+  const body = data ? JSON.stringify(data) : '{}'
+
+  const responseText = await invoke<string>('http_post', { url: fullUrl, body })
+  return JSON.parse(responseText) as T
 }
 
 // ── Axios instance (browser mode-д ашиглана) ──
@@ -65,47 +58,6 @@ http.interceptors.response.use(
   },
 )
 
-// ── Tauri fetch POST helper ──
-async function tauriPost<T>(url: string, data?: any): Promise<T> {
-  const tf = await initTauriFetch()
-  if (!tf) throw new Error('Tauri fetch unavailable')
-
-  // Auth header
-  let authHeader: string | undefined
-  try {
-    if (!url.startsWith('/pos/')) {
-      const auth = localStorage.getItem('auth')
-      if (auth) {
-        const parsed = JSON.parse(auth)
-        if (parsed.token) authHeader = `Bearer ${parsed.token}`
-      }
-    }
-  } catch { /* ignore */ }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Origin': 'https://finex.app.mn',
-  }
-  if (authHeader) headers['Authorization'] = authHeader
-
-  const response = await tf(`${API_BASE}${url}`, {
-    method: 'POST',
-    headers,
-    body: data ? JSON.stringify(data) : undefined,
-  })
-
-  if (response.status === 401) {
-    const session = localStorage.getItem('session')
-    if (!session) {
-      localStorage.removeItem('auth')
-      window.location.href = '/'
-    }
-  }
-
-  const result = await response.json()
-  return result as T
-}
-
 // ── API ──
 export interface ApiOptions {
   showError?: boolean
@@ -121,7 +73,7 @@ export async function api<T = any>(url: string, data?: any, opts?: ApiOptions & 
     let result: any
 
     if (isTauri()) {
-      // Tauri mode: plugin-http ашиглана (CORS bypass)
+      // Tauri mode: Rust invoke ашиглана (CORS байхгүй)
       result = await tauriPost<T>(url, data)
     } else {
       // Browser mode: Axios ашиглана
