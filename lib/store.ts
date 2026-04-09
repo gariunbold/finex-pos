@@ -311,7 +311,7 @@ export const usePosStore = create<PosState>((set, get) => ({
 
   restorePosSession: () => {
     // Tauri environment шалгах
-    if (typeof window === 'undefined' || !(window as any).__TAURI__) {
+    if (typeof window === 'undefined' || !((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
       // Browser mode - localStorage fallback
       try {
         const saved = localStorage.getItem('session')
@@ -452,7 +452,7 @@ export const usePosStore = create<PosState>((set, get) => ({
         set(session)
         
         // SQLite хадгалах (Tauri mode)
-        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+        if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
           import('./pos-db').then(async (db) => {
             await db.saveDevice({
               deviceId: pos.storeId,
@@ -499,7 +499,7 @@ export const usePosStore = create<PosState>((set, get) => ({
     })
     
     // SQLite устгах
-    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+    if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
       import('./pos-db').then(async (db) => {
         await db.clearDevice()
         await db.clearUserSession()
@@ -515,7 +515,7 @@ export const usePosStore = create<PosState>((set, get) => ({
     if (!isPaired) return false
 
     // Offline login (code + password check)
-    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+    if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
       try {
         const db = await import('./pos-db')
 
@@ -577,7 +577,7 @@ export const usePosStore = create<PosState>((set, get) => ({
     set({ posUser: null, cashSession: null })
     
     // SQLite устгах
-    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+    if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
       import('./pos-db').then(async (db) => {
         await db.saveUserSession({
           userSid: null,
@@ -618,7 +618,7 @@ export const usePosStore = create<PosState>((set, get) => ({
       set({ cashSession: session })
       
       // SQLite хадгалах
-      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+      if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
         import('./pos-db').then(async (db) => {
           await db.saveUserSession({
             userSid: posUser.sid,
@@ -648,7 +648,7 @@ export const usePosStore = create<PosState>((set, get) => ({
       set({ cashSession: null })
       
       // SQLite хадгалах
-      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+      if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
         import('./pos-db').then(async (db) => {
           await db.saveUserSession({
             userSid: posUser?.sid || null,
@@ -722,7 +722,7 @@ export const usePosStore = create<PosState>((set, get) => ({
         set({ syncData })
 
         // SQLite хадгалах
-        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+        if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
           import('./pos-db').then(async (db) => {
             await db.saveSyncData({
               menus,
@@ -756,7 +756,7 @@ export const usePosStore = create<PosState>((set, get) => ({
     set({ pendingSales: pending })
     
     // SQLite хадгалах
-    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+    if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
       import('./pos-db').then(async (db) => {
         await db.addPendingSale(sale)
       }).catch(() => {})
@@ -793,7 +793,7 @@ export const usePosStore = create<PosState>((set, get) => ({
       if (res.ok || res.data?.uploaded > 0) {
         set({ pendingSales: [] })
 
-        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+        if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
           import('./pos-db').then(async (db) => {
             const saleIds = pendingSales.map(s => s.id)
             await db.markSalesUploaded(saleIds)
@@ -818,7 +818,7 @@ export const usePosStore = create<PosState>((set, get) => ({
     const updated = [...bills, bill]
     set({ openBills: updated })
 
-    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+    if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
       import('./pos-db').then(db => db.saveOpenBill(bill)).catch(() => {})
     }
     localStorage.setItem('open-bills', JSON.stringify(updated))
@@ -851,7 +851,7 @@ export const usePosStore = create<PosState>((set, get) => ({
     }
     get().addPendingSale(sale)
 
-    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+    if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
       import('./pos-db').then(db => db.closeBill(billId, payments)).catch(() => {})
     }
   },
@@ -861,13 +861,13 @@ export const usePosStore = create<PosState>((set, get) => ({
     set({ openBills: remaining })
     localStorage.setItem('open-bills', JSON.stringify(remaining))
 
-    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+    if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
       import('./pos-db').then(db => db.deleteOpenBill(billId)).catch(() => {})
     }
   },
 
   loadOpenBills: async () => {
-    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+    if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
       try {
         const db = await import('./pos-db')
         const bills = await db.getOpenBills()
