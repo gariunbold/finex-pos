@@ -9,19 +9,7 @@ jobs:
   release:
     permissions:
       contents: write
-    runs-on: windows-latest 
-    # strategy:
-    #   fail-fast: false
-    #   matrix:
-    #     include:
-    #       - platform: macos-latest
-    #         args: "--target aarch64-apple-darwin"
-    #       - platform: macos-latest
-    #         args: "--target x86_64-apple-darwin"
-    #       - platform: windows-latest
-    #         args: ""
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
