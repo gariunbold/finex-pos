@@ -15,12 +15,14 @@ import {
 
 type Tab = "payment" | "menugroup"
 
-const PAYMENT_LABELS: Record<number, { label: string; icon: typeof Banknote }> = {
-  1: { label: "Бэлэн", icon: Banknote },
-  2: { label: "Карт", icon: CreditCard },
-  3: { label: "Банк", icon: CreditCard },
-  4: { label: "QR", icon: QrCode },
-  5: { label: "Зээл", icon: Receipt },
+function getPaymentLabel(sid: string, syncData: any): { label: string; icon: typeof Banknote } {
+  const pt = syncData.paymentTypes?.find((p: any) => p.sid === sid)
+  if (!pt) return { label: sid, icon: Receipt }
+  const lower = (pt.code || pt.name || '').toLowerCase()
+  if (lower.includes('cash') || lower.includes('бэлэн')) return { label: pt.name, icon: Banknote }
+  if (lower.includes('card') || lower.includes('карт')) return { label: pt.name, icon: CreditCard }
+  if (lower.includes('qr') || lower.includes('qpay')) return { label: pt.name, icon: QrCode }
+  return { label: pt.name, icon: Receipt }
 }
 
 export default function PosReportPage() {
@@ -56,7 +58,7 @@ export default function PosReportPage() {
 
   // ═══ Төлбөрийн тайлан ═══
   const paymentSummary = useMemo(() => {
-    const map = new Map<number, { count: number; total: number }>()
+    const map = new Map<string, { count: number; total: number }>()
     let grandTotal = 0
     let saleCount = allSales.length
 
@@ -218,7 +220,7 @@ function PaymentReport({ data }: { data: { items: { type: number; count: number;
       {/* Төрөл бүрээр */}
       <div className="space-y-2">
         {data.items.map((item) => {
-          const config = PAYMENT_LABELS[item.type] || { label: `Төрөл ${item.type}`, icon: Receipt }
+          const config = getPaymentLabel(item.type, syncData)
           const Icon = config.icon
           const percent = data.grandTotal > 0 ? (item.total / data.grandTotal) * 100 : 0
 
