@@ -203,6 +203,7 @@ export interface SyncData {
   rooms: any[]
   tables: any[]
   discounts: any[]
+  paymentTypes: any[]
   posUsers: any[]
 }
 
@@ -217,7 +218,7 @@ export interface BillItem {
 }
 
 export interface LocalPayment {
-  paymentType: number  // 1=cash, 2=card, 3=bank, 4=QR, 5=credit
+  paymentType: string  // BillPaymentType sid
   amount: number
 }
 
@@ -303,6 +304,7 @@ export const usePosStore = create<PosState>((set, get) => ({
     menuRecipes: [],
     menuPrices: [],
     discounts: [],
+    paymentTypes: [],
     rooms: [],
     tables: [],
     posUsers: [],
@@ -387,7 +389,7 @@ export const usePosStore = create<PosState>((set, get) => ({
         }
 
         // Sync data (бүх table-аас)
-        const [menus, menuGroups, menuPrices, menuRecipes, rooms, tables, discounts, posUsers] = await Promise.all([
+        const [menus, menuGroups, menuPrices, menuRecipes, rooms, tables, discounts, paymentTypes, posUsers] = await Promise.all([
           db.getMenus(),
           db.getMenuGroups(),
           db.getMenuPrices(),
@@ -395,10 +397,11 @@ export const usePosStore = create<PosState>((set, get) => ({
           db.getRooms(),
           db.getTables(),
           db.getDiscounts(),
+          db.getPaymentTypes(),
           db.getPosUsers(),
         ])
 
-        // SQLite snake_case → camelCase + store price merge
+        // SQLite snake_case → camelCase
         const menusWithPrice = menus.map((m: any) => {
           const storePrice = menuPrices.find((mp: any) => mp.menu_sid === m.sid)
           return {
@@ -408,6 +411,27 @@ export const usePosStore = create<PosState>((set, get) => ({
             price: storePrice?.price ?? m.price ?? 0,
           }
         })
+
+        const tablesWithCamel = tables.map((t: any) => ({
+          ...t,
+          roomSid: t.room_sid || t.roomSid,
+          storeSid: t.store_sid || t.storeSid,
+          isActive: t.is_active ?? t.isActive ?? 1,
+        }))
+
+        const roomsWithCamel = rooms.map((r: any) => ({
+          ...r,
+          storeSid: r.store_sid || r.storeSid,
+          isActive: r.is_active ?? r.isActive ?? 1,
+        }))
+
+        const ptWithCamel = paymentTypes.map((pt: any) => ({
+          ...pt,
+          bankSid: pt.bank_sid || pt.bankSid,
+          bankCode: pt.bank_code || pt.bankCode,
+          bankName: pt.bank_name || pt.bankName,
+          accountNumber: pt.account_number || pt.accountNumber,
+        }))
 
         const lastSyncAt = await db.getLastSyncTime()
 
@@ -419,8 +443,9 @@ export const usePosStore = create<PosState>((set, get) => ({
             menuRecipes,
             menuPrices,
             discounts,
-            rooms,
-            tables,
+            paymentTypes: ptWithCamel,
+            rooms: roomsWithCamel,
+            tables: tablesWithCamel,
             posUsers,
           },
         })
@@ -711,6 +736,7 @@ export const usePosStore = create<PosState>((set, get) => ({
           menuRecipes: d.menuRecipes || [],
           menuPrices: rawMenuPrices,
           discounts: d.discounts || [],
+          paymentTypes: d.paymentTypes || [],
           rooms: d.rooms || [],
           tables: d.tables || [],
           posUsers: d.posUsers || [],
@@ -721,6 +747,7 @@ export const usePosStore = create<PosState>((set, get) => ({
           menuGroups: syncData.menuGroups.length,
           menuPrices: syncData.menuPrices.length,
           discounts: syncData.discounts.length,
+          paymentTypes: syncData.paymentTypes.length,
           posUsers: syncData.posUsers.length,
         })
 
@@ -734,6 +761,7 @@ export const usePosStore = create<PosState>((set, get) => ({
               menuGroups: syncData.menuGroups,
               menuPrices: rawMenuPrices,
               discounts: syncData.discounts,
+              paymentTypes: syncData.paymentTypes,
               rooms: syncData.rooms,
               tables: syncData.tables,
             })
@@ -785,6 +813,7 @@ export const usePosStore = create<PosState>((set, get) => ({
           menuSid: item.menuSid,
           price: item.price,
           quantity: item.quantity,
+          isCancelled: !!item.isCancelled,
         })),
         payments: s.payments,
         createdAt: s.createdAt,
@@ -796,17 +825,20 @@ export const usePosStore = create<PosState>((set, get) => ({
       }, { showLoading: false, showError: false })
 
       if (res.ok || res.data?.uploaded > 0) {
-        set({ pendingSales: [] })
+        // Uploaded болсон борлуулалтуудыг тэмдэглэх (устгахгүй — тайланд ашиглана)
+        const uploadedIds = new Set(pendingSales.map(s => s.id))
+        const updatedSales = pendingSales.map(s => uploadedIds.has(s.id) ? { ...s, uploaded: true } : s)
+        set({ pendingSales: updatedSales.filter(s => !s.uploaded) })
 
         if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
           import('./pos-db').then(async (db) => {
             const saleIds = pendingSales.map(s => s.id)
             await db.markSalesUploaded(saleIds)
-            await db.clearUploadedSales()
             await db.markBillsUploaded(saleIds)
           }).catch(() => {})
         }
 
+        // localStorage-д зөвхөн upload хийгээгүй борлуулалтууд үлдэнэ
         localStorage.setItem('pending-sales', JSON.stringify([]))
         return true
       }

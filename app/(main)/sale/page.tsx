@@ -13,8 +13,22 @@ import { toMoney } from "@/lib/format"
 import {
   Search, ShoppingCart, Trash2, Plus, Minus, Download, Upload, LogOut,
   DollarSign, LayoutGrid, Store, Save, ArrowLeft, Banknote, CreditCard, QrCode,
-  Coffee, Users, BarChart3,
+  Coffee, Users, BarChart3, Building2, Wallet, CircleDollarSign,
 } from "lucide-react"
+
+const TugrikIcon = ({ className }: { className?: string }) => (
+  <span className={className} style={{ fontWeight: 700, fontSize: '1.1em', lineHeight: 1 }}>₮</span>
+)
+
+function getPaymentIcon(codeOrName: string) {
+  const lower = (codeOrName || '').toLowerCase()
+  if (lower.includes('cash') || lower.includes('бэлэн')) return Banknote
+  if (lower.includes('card') || lower.includes('карт')) return CreditCard
+  if (lower.includes('qr') || lower.includes('qpay')) return QrCode
+  if (lower.includes('bank') || lower.includes('данс')) return Building2
+  if (lower.includes('credit') || lower.includes('зээл')) return Wallet
+  return TugrikIcon
+}
 
 type SaleMode = "menu" | "tables"
 
@@ -39,8 +53,9 @@ export default function PosSalePage() {
 
   // Төлбөрийн dialog
   const [paymentOpen, setPaymentOpen] = useState(false)
-  const [paymentType, setPaymentType] = useState(1) // 1=cash
+  const [paymentTypeSid, setPaymentTypeSid] = useState<string | null>(null)
   const [paymentAmount, setPaymentAmount] = useState("")
+  const [paymentList, setPaymentList] = useState<LocalPayment[]>([]) // олон төлбөр
 
   useEffect(() => {
     if (!isPaired || !posUser) { router.replace("/login"); return }
@@ -98,7 +113,7 @@ export default function PosSalePage() {
 
   const updateQuantity = (menuSid: string, newQty: number) => {
     if (newQty <= 0) {
-      // Soft delete — цуцлагдсан гэж тэмдэглэнэ
+      // Soft delete — quantity/amount 0 болгож, flag тавина
       setBillItems(prev => prev.map(item =>
         item.menuSid === menuSid
           ? { ...item, isCancelled: true, quantity: 0, amount: 0 }
@@ -187,24 +202,66 @@ export default function PosSalePage() {
 
   // ═══ Төлбөр ═══
 
+  const selectedPt = syncData.paymentTypes.find((pt: any) => pt.sid === paymentTypeSid)
+  const paidTotal = paymentList.reduce((sum, p) => sum + p.amount, 0)
+  const remainingAmount = billTotal - paidTotal
+
   const openPaymentDialog = () => {
     if (billItems.length === 0) {
       alertError("Билл хоосон байна")
       return
     }
-    setPaymentType(1)
+    setPaymentTypeSid(syncData.paymentTypes[0]?.sid || null)
     setPaymentAmount(billTotal.toString())
+    setPaymentList([])
     setPaymentOpen(true)
   }
 
-  const handlePay = () => {
+  const handleAddPayment = () => {
     const amount = parseFloat(paymentAmount) || 0
     if (amount <= 0) {
-      alertError("Төлбөрийн дүн оруулна уу")
+      alertError("Дүн оруулна уу")
+      return
+    }
+    if (!paymentTypeSid) {
+      alertError("Төлбөрийн төрөл сонгоно уу")
+      return
+    }
+    const newList = [...paymentList, { paymentType: paymentTypeSid, amount }]
+    setPaymentList(newList)
+
+    const newRemaining = billTotal - newList.reduce((sum, p) => sum + p.amount, 0)
+    if (newRemaining > 0) {
+      setPaymentAmount(newRemaining.toString())
+    } else {
+      setPaymentAmount("0")
+    }
+  }
+
+  const handleRemovePayment = (index: number) => {
+    const newList = paymentList.filter((_, i) => i !== index)
+    setPaymentList(newList)
+    const newRemaining = billTotal - newList.reduce((sum, p) => sum + p.amount, 0)
+    setPaymentAmount(newRemaining > 0 ? newRemaining.toString() : "0")
+  }
+
+  const handlePay = () => {
+    const payments = paymentList.length > 0
+      ? paymentList
+      : paymentTypeSid
+        ? [{ paymentType: paymentTypeSid, amount: parseFloat(paymentAmount) || 0 }]
+        : []
+
+    if (payments.length === 0 || payments.some(p => !p.paymentType || p.amount <= 0)) {
+      alertError("Төлбөр нэмнэ үү")
       return
     }
 
-    const payments: LocalPayment[] = [{ paymentType, amount }]
+    const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0)
+    if (totalPaid < billTotal) {
+      alertError("Төлбөрийн дүн хүрэхгүй байна", `Үлдэгдэл: ${toMoney(billTotal - totalPaid)}`)
+      return
+    }
 
     if (currentTableSid && currentBillId) {
       payOpenBill(currentBillId, payments)
@@ -231,7 +288,7 @@ export default function PosSalePage() {
     }
   }
 
-  const changeAmount = paymentType === 1 ? (parseFloat(paymentAmount) || 0) - billTotal : 0
+  const getPaymentTypeName = (sid: string) => syncData.paymentTypes.find((pt: any) => pt.sid === sid)?.name || ''
 
   // ═══ Nav functions ═══
 
@@ -566,7 +623,7 @@ export default function PosSalePage() {
               onClick={openPaymentDialog}
               disabled={billItems.length === 0}
             >
-              <DollarSign className="h-5 w-5 mr-2" />
+              <span className="text-lg font-bold mr-2">₮</span>
               Төлөлт хийх
             </Button>
             <Button variant="outline" className="w-full" onClick={() => router.push("/cash")}>
@@ -583,74 +640,93 @@ export default function PosSalePage() {
             <DialogTitle>Төлбөр хийх</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-5">
-            {/* Total display */}
-            <div className="text-center py-3 rounded-xl bg-primary/5 border border-primary/10">
-              <div className="text-sm text-muted-foreground">Нийт дүн</div>
-              <div className="text-3xl font-bold tracking-tight mt-1">{toMoney(billTotal)}</div>
-            </div>
-
-            {/* Төлбөрийн төрөл */}
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${
-                  paymentType === 1
-                    ? "border-primary bg-primary/8"
-                    : "border-border hover:border-primary/30 hover:bg-muted/50"
-                }`}
-                onClick={() => setPaymentType(1)}
-              >
-                <Banknote className={`h-5 w-5 ${paymentType === 1 ? "text-primary" : "text-muted-foreground"}`} />
-                <span className={`text-sm font-medium ${paymentType === 1 ? "text-primary" : ""}`}>Бэлэн</span>
-              </button>
-              <button
-                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${
-                  paymentType === 2
-                    ? "border-primary bg-primary/8"
-                    : "border-border hover:border-primary/30 hover:bg-muted/50"
-                }`}
-                onClick={() => setPaymentType(2)}
-              >
-                <CreditCard className={`h-5 w-5 ${paymentType === 2 ? "text-primary" : "text-muted-foreground"}`} />
-                <span className={`text-sm font-medium ${paymentType === 2 ? "text-primary" : ""}`}>Карт</span>
-              </button>
-              <button
-                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${
-                  paymentType === 4
-                    ? "border-primary bg-primary/8"
-                    : "border-border hover:border-primary/30 hover:bg-muted/50"
-                }`}
-                onClick={() => setPaymentType(4)}
-              >
-                <QrCode className={`h-5 w-5 ${paymentType === 4 ? "text-primary" : "text-muted-foreground"}`} />
-                <span className={`text-sm font-medium ${paymentType === 4 ? "text-primary" : ""}`}>QR</span>
-              </button>
-            </div>
-
-            {/* Дүн оруулах */}
-            <div className="space-y-2">
-              <Input
-                type="number"
-                placeholder="Дүн"
-                value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
-                className="text-center text-lg font-medium"
-              />
-              {paymentType === 1 && changeAmount > 0 && (
-                <div className="text-center py-2 rounded-lg bg-muted/50">
-                  <span className="text-sm text-muted-foreground">Хариулт: </span>
-                  <span className="text-sm font-bold text-primary">{toMoney(changeAmount)}</span>
+          <div className="space-y-4">
+            {/* Нийт дүн + Үлдэгдэл */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="text-center py-3 rounded-xl bg-primary/5 border border-primary/10">
+                <div className="text-sm text-muted-foreground">Нийт дүн</div>
+                <div className="text-2xl font-bold tracking-tight mt-1">{toMoney(billTotal)}</div>
+              </div>
+              <div className={`text-center py-3 rounded-xl border ${remainingAmount > 0 ? 'bg-orange-500/5 border-orange-500/20' : 'bg-emerald-500/5 border-emerald-500/20'}`}>
+                <div className="text-sm text-muted-foreground">Үлдэгдэл</div>
+                <div className={`text-2xl font-bold tracking-tight mt-1 ${remainingAmount > 0 ? 'text-orange-600' : 'text-emerald-600'}`}>
+                  {toMoney(Math.max(remainingAmount, 0))}
                 </div>
-              )}
+              </div>
             </div>
+
+            {/* Нэмсэн төлбөрүүд */}
+            {paymentList.length > 0 && (
+              <div className="space-y-1.5 max-h-32 overflow-y-auto slim-scroll">
+                {paymentList.map((p, i) => (
+                  <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/40 border border-border/50">
+                    <span className="text-sm font-medium">{getPaymentTypeName(p.paymentType)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">{toMoney(p.amount)}</span>
+                      <button onClick={() => handleRemovePayment(i)} className="text-muted-foreground hover:text-destructive cursor-pointer">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Төлбөрийн төрөл сонгох */}
+            {remainingAmount > 0 && (
+              <>
+                <div className={`grid gap-2 ${syncData.paymentTypes.length <= 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
+                  {syncData.paymentTypes.map((pt: any) => {
+                    const isSelected = paymentTypeSid === pt.sid
+                    const Icon = getPaymentIcon(pt.code || pt.name)
+                    return (
+                      <button
+                        key={pt.sid}
+                        className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${
+                          isSelected
+                            ? "border-primary bg-primary/8"
+                            : "border-border hover:border-primary/30 hover:bg-muted/50"
+                        }`}
+                        onClick={() => setPaymentTypeSid(pt.sid)}
+                      >
+                        <Icon className={`h-5 w-5 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                        <span className={`text-sm font-medium ${isSelected ? "text-primary" : ""}`}>{pt.name}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Банкны данс мэдээлэл */}
+                {selectedPt?.accountNumber && (
+                  <div className="text-center py-2 px-3 rounded-lg bg-muted/50 border border-border/50">
+                    <div className="text-sm text-muted-foreground">{selectedPt.bankName || 'Данс'}</div>
+                    <div className="text-sm font-semibold tracking-wide">{selectedPt.accountNumber}</div>
+                  </div>
+                )}
+
+                {/* Дүн + Нэмэх */}
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    placeholder="Дүн"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    className="text-center text-lg font-medium flex-1"
+                  />
+                  <Button onClick={handleAddPayment} className="shrink-0">
+                    <Plus className="h-4 w-4 mr-1" /> Нэмэх
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setPaymentOpen(false)}>
               Цуцлах
             </Button>
-            <Button onClick={handlePay}>
-              <DollarSign className="h-4 w-4 mr-2" />
+            <Button onClick={handlePay} disabled={paidTotal < billTotal}>
+              <span className="text-sm font-bold mr-1">₮</span>
               Төлөх
             </Button>
           </DialogFooter>

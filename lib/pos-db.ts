@@ -169,6 +169,20 @@ async function createTables() {
     )
   `)
 
+  // Payment types (төлбөрийн төрлүүд)
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS payment_types (
+      sid TEXT PRIMARY KEY,
+      code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      bank_sid TEXT,
+      bank_code TEXT,
+      bank_name TEXT,
+      account_number TEXT,
+      synced_at TEXT NOT NULL
+    )
+  `)
+
   // Pending sales (offline хийгдсэн, upload хүлээж буй)
   await database.execute(`
     CREATE TABLE IF NOT EXISTS pending_sales (
@@ -291,6 +305,7 @@ export async function saveSyncData(data: {
   rooms: any[]
   tables: any[]
   menuRecipes?: any[]
+  paymentTypes?: any[]
 }) {
   const database = await getDb()
   const syncedAt = new Date().toISOString()
@@ -303,6 +318,7 @@ export async function saveSyncData(data: {
   await database.execute('DELETE FROM rooms')
   await database.execute('DELETE FROM tables')
   await database.execute('DELETE FROM discounts')
+  await database.execute('DELETE FROM payment_types')
 
   // Menu groups
   for (const g of data.menuGroups) {
@@ -374,6 +390,15 @@ export async function saveSyncData(data: {
       ]
     )
   }
+
+  // Payment types
+  for (const pt of (data.paymentTypes || [])) {
+    await database.execute(
+      `INSERT INTO payment_types (sid, code, name, bank_sid, bank_code, bank_name, account_number, synced_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [pt.sid, pt.code, pt.name, pt.bankSid || null, pt.bankCode || null, pt.bankName || null, pt.accountNumber || null, syncedAt]
+    )
+  }
 }
 
 export async function getMenus(): Promise<any[]> {
@@ -404,6 +429,11 @@ export async function getRooms(): Promise<any[]> {
 export async function getTables(): Promise<any[]> {
   const database = await getDb()
   return await database.select('SELECT * FROM tables WHERE is_active = 1 ORDER BY name')
+}
+
+export async function getPaymentTypes(): Promise<any[]> {
+  const database = await getDb()
+  return await database.select('SELECT * FROM payment_types ORDER BY code')
 }
 
 export async function getDiscounts(): Promise<any[]> {
@@ -489,8 +519,7 @@ export async function markSalesUploaded(saleIds: string[]) {
 }
 
 export async function clearUploadedSales() {
-  const database = await getDb()
-  await database.execute('DELETE FROM pending_sales WHERE uploaded = 1')
+  // Тайланд ашиглахын тулд uploaded=1 бүртгэлүүдийг устгахгүй хадгална
 }
 
 // ═══════════════════════════════════════════════════════════

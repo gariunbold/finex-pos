@@ -9,16 +9,17 @@ jobs:
   release:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            args: "--target aarch64-apple-darwin"
-          - platform: macos-latest
-            args: "--target x86_64-apple-darwin"
-          - platform: windows-latest
-            args: ""
+    runs-on: windows-latest 
+    # strategy:
+    #   fail-fast: false
+    #   matrix:
+    #     include:
+    #       - platform: macos-latest
+    #         args: "--target aarch64-apple-darwin"
+    #       - platform: macos-latest
+    #         args: "--target x86_64-apple-darwin"
+    #       - platform: windows-latest
+    #         args: ""
 
     runs-on: ${{ matrix.platform }}
 
@@ -32,13 +33,11 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Install dependencies
         run: npm install
 
-      - name: Build and release
+      - name: Build Tauri
         uses: tauri-apps/tauri-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -50,4 +49,18 @@ jobs:
           releaseBody: "Finex POS шинэ хувилбар гарлаа."
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
+
+      - name: Remove unnecessary assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $assets = gh release view $tag --json assets --jq ".assets[].name"
+          foreach ($asset in $assets -split "`n") {
+            $asset = $asset.Trim()
+            if ($asset -and -not ($asset -match "_x64-setup\.exe$")) {
+              Write-Host "Removing: $asset"
+              gh release delete-asset $tag $asset --yes
+            }
+          }
+        shell: pwsh
