@@ -176,7 +176,7 @@ export default function PosReportPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 slim-scroll">
         {tab === "payment" ? (
-          <PaymentReport data={paymentSummary} />
+          <PaymentReport data={paymentSummary} syncData={syncData} />
         ) : (
           <MenuGroupReport data={menuGroupSummary} />
         )}
@@ -186,7 +186,7 @@ export default function PosReportPage() {
 }
 
 // ═══ Төлбөрийн төрлийн тайлан ═══
-function PaymentReport({ data }: { data: { items: { type: string; count: number; total: number }[]; grandTotal: number; saleCount: number } }) {
+function PaymentReport({ data, syncData }: { data: { items: { type: string; count: number; total: number }[]; grandTotal: number; saleCount: number }; syncData: any }) {
   if (data.saleCount === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
