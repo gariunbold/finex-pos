@@ -186,7 +186,7 @@ export default function PosReportPage() {
 }
 
 // ═══ Төлбөрийн төрлийн тайлан ═══
-function PaymentReport({ data }: { data: { items: { type: number; count: number; total: number }[]; grandTotal: number; saleCount: number } }) {
+function PaymentReport({ data }: { data: { items: { type: string; count: number; total: number }[]; grandTotal: number; saleCount: number } }) {
   if (data.saleCount === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
