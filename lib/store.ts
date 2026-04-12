@@ -318,6 +318,7 @@ export const usePosStore = create<PosState>((set, get) => ({
       const saved = localStorage.getItem('session')
       if (saved) {
         const data = JSON.parse(saved)
+        const current = get()
         set({
           isPaired: !!data.posToken,
           posToken: data.posToken || null,
@@ -326,8 +327,8 @@ export const usePosStore = create<PosState>((set, get) => ({
           deviceName: data.deviceName || null,
           storeId: data.storeId || null,
           storeName: data.storeName || null,
-          posUser: data.posUser || null,
-          cashSession: data.cashSession || null,
+          posUser: current.posUser || data.posUser || null,
+          cashSession: current.cashSession || data.cashSession || null,
         })
       }
 
@@ -571,6 +572,9 @@ export const usePosStore = create<PosState>((set, get) => ({
           cashOpenedAt: null,
           cashOpeningAmount: null,
         })
+
+        const saved = JSON.parse(localStorage.getItem('session') || '{}')
+        localStorage.setItem('session', JSON.stringify({ ...saved, posUser, cashSession: null }))
 
         return true
       } catch {

@@ -46,7 +46,7 @@ jobs:
           $assets = gh release view $tag --json assets --jq ".assets[].name"
           foreach ($asset in $assets -split "`n") {
             $asset = $asset.Trim()
-            if ($asset -and -not ($asset -match "_x64-setup\.exe$")) {
+            if ($asset -and -not ($asset -match "(_x64-setup\.exe|latest\.json|\.sig)$")) {
               Write-Host "Removing: $asset"
               gh release delete-asset $tag $asset --yes
             }
