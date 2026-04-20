@@ -3,7 +3,8 @@ import type { AxiosRequestConfig } from 'axios'
 import { useAlertStore } from './store'
 
 // ── Base URL ──
-const API_BASE = 'https://finex.app.mn/api'
+//const API_BASE = 'https://finex.app.mn/api'
+const API_BASE = 'http://localhost:3000/api'
 
 // ── Tauri mode шалгах ──
 function isTauri(): boolean {

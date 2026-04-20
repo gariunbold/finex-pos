@@ -11,6 +11,7 @@ let db: Database | null = null
 export async function initPosDatabase(): Promise<Database> {
   if (db) return db
   db = await Database.load('sqlite:pos.db')
+  await migrateSchema()
   await createTables()
   return db
 }
@@ -20,6 +21,24 @@ export async function getDb(): Promise<Database> {
     return await initPosDatabase()
   }
   return db
+}
+
+async function migrateSchema() {
+  const database = await getDb()
+  // Хуучин schema-тай table-г устгаж дахин үүсгэх (sync data дахин татагдана)
+  const syncTables = ['menus', 'menu_groups', 'menu_prices', 'menu_recipes', 'rooms', 'tables', 'discounts', 'payment_types', 'pos_users']
+  for (const table of syncTables) {
+    try {
+      const cols = await database.select<any[]>(`PRAGMA table_info(${table})`)
+      // menus table-д image_code column байхгүй бол хуучин schema
+      if (table === 'menus' && cols.length > 0 && !cols.find((c: any) => c.name === 'image_code')) {
+        for (const t of syncTables) {
+          await database.execute(`DROP TABLE IF EXISTS ${t}`)
+        }
+        break
+      }
+    } catch {}
+  }
 }
 
 async function createTables() {
@@ -82,6 +101,7 @@ async function createTables() {
       is_featured INTEGER DEFAULT 0,
       is_spicy INTEGER DEFAULT 0,
       is_active INTEGER DEFAULT 1,
+      image_code TEXT,
       synced_at TEXT NOT NULL
     )
   `)
@@ -332,14 +352,14 @@ export async function saveSyncData(data: {
   for (const m of data.menus) {
     await database.execute(
       `INSERT INTO menus (sid, code, name, group_sid, price, description, prep_time, calories,
-        is_paid_service, employee_percent, product_sid, product_quantity, is_featured, is_spicy, is_active, synced_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        is_paid_service, employee_percent, product_sid, product_quantity, is_featured, is_spicy, is_active, image_code, synced_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
       [
         m.sid, m.code, m.name, m.groupSid || null, m.price || 0,
         m.description || null, m.prepTime || null, m.calories || null,
         m.isPaidService || 0, m.employeePercent || null,
         m.productSid || null, m.productQuantity || null,
-        m.isFeatured || 0, m.isSpicy || 0, m.isActive ?? 1, syncedAt,
+        m.isFeatured || 0, m.isSpicy || 0, m.isActive ?? 1, m.imageCode || null, syncedAt,
       ]
     )
   }

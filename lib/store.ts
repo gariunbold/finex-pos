@@ -250,6 +250,7 @@ export interface PendingSale {
   payments: LocalPayment[]
   total: number
   uploaded: boolean
+  isDeleted?: boolean
 }
 
 interface PosState {
@@ -410,6 +411,7 @@ export const usePosStore = create<PosState>((set, get) => ({
             groupSid: m.group_sid || m.groupSid,
             isActive: m.is_active ?? m.isActive ?? 1,
             price: storePrice?.price ?? m.price ?? 0,
+            imageCode: m.image_code || m.imageCode || null,
           }
         })
 
@@ -587,7 +589,10 @@ export const usePosStore = create<PosState>((set, get) => ({
       const saved = localStorage.getItem('session')
       if (saved) {
         const data = JSON.parse(saved)
-        const posUsers = data.posUsers || []
+        // sync-data дотроос шинэчлэгдсэн posUsers-г авах, байхгүй бол session-ээс
+        const syncDataStr = localStorage.getItem('sync-data')
+        const syncData = syncDataStr ? JSON.parse(syncDataStr) : null
+        const posUsers = syncData?.posUsers || data.posUsers || []
 
         const user = posUsers.find((u: any) => u.code === code && u.password === password)
         if (user) {
@@ -730,6 +735,8 @@ export const usePosStore = create<PosState>((set, get) => ({
             ...m,
             // Store-д зориулсан үнэ байвал ашиглах, байхгүй бол menu.price
             price: storePrice?.price ?? m.price ?? 0,
+            // Зургийн мэдээлэл
+            imageCode: m.imageCode || null,
           }
         })
 
@@ -759,7 +766,8 @@ export const usePosStore = create<PosState>((set, get) => ({
 
         // SQLite хадгалах
         if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
-          import('./pos-db').then(async (db) => {
+          try {
+            const db = await import('./pos-db')
             await db.saveSyncData({
               menus,
               menuGroups: syncData.menuGroups,
@@ -772,11 +780,28 @@ export const usePosStore = create<PosState>((set, get) => ({
             if (syncData.posUsers.length > 0) {
               await db.savePosUsers(syncData.posUsers)
             }
-          }).catch(() => {})
+            console.log('[SYNC] SQLite saved, posUsers:', syncData.posUsers.length)
+          } catch (e) {
+            console.error('[SYNC] SQLite save error:', e)
+          }
+        }
+
+        // Зургуудыг offline cache хийх
+        try {
+          const { cacheMenuImages } = await import('@/app/(main)/sale/helpers')
+          await cacheMenuImages(menus)
+          console.log('[SYNC] Menu images cached')
+        } catch (e) {
+          console.error('[SYNC] Image cache error:', e)
         }
 
         // localStorage fallback
         localStorage.setItem('sync-data', JSON.stringify(syncData))
+
+        // session дотор posUsers шинэчлэх (login-д ашиглагддаг)
+        const saved = JSON.parse(localStorage.getItem('session') || '{}')
+        localStorage.setItem('session', JSON.stringify({ ...saved, posUsers: syncData.posUsers }))
+
         return true
       }
 
@@ -821,6 +846,7 @@ export const usePosStore = create<PosState>((set, get) => ({
         })),
         payments: s.payments,
         createdAt: s.createdAt,
+        isDeleted: !!s.isDeleted,
       }))
 
       const res = await api<any>('/bill/uploadSales', {

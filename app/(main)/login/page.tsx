@@ -8,11 +8,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Smartphone, Lock, LogOut, Monitor, User } from "lucide-react"
+import { Smartphone, Lock, LogOut, Monitor, User, Info, RefreshCw } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 export default function PosLoginPage() {
   const router = useRouter()
-  const { isPaired, deviceName, storeName, activateDevice, unpairDevice, posLogin } = usePosStore()
+  const { isPaired, deviceName, storeName, activateDevice, unpairDevice, posLogin, syncFromServer } = usePosStore()
   const { alertError, confirm, showLoading, hideLoading, toastSuccess } = useAlertStore()
 
   const [activationCode, setActivationCode] = useState("")
@@ -20,24 +21,26 @@ export default function PosLoginPage() {
   const [adminPassword, setAdminPassword] = useState("")
   const [userCode, setUserCode] = useState("")
   const [password, setPassword] = useState("")
+  const [showInfo, setShowInfo] = useState(false)
+  const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
     // Restore session from localStorage
     usePosStore.getState().restorePosSession()
   }, [])
 
-  // Device Pairing: Activation Code + Админ баталгаажуулалт
+  // Device Pairing: Activation Code + User table-ийн хэрэглэгчийн баталгаажуулалт
   const handleActivate = async () => {
     if (!activationCode.trim()) {
       alertError("Идэвхжүүлэх код оруулна уу")
       return
     }
     if (!adminCode.trim()) {
-      alertError("Админ нэвтрэх нэр оруулна уу")
+      alertError("Хэрэглэгчийн код оруулна уу")
       return
     }
     if (!adminPassword.trim()) {
-      alertError("Админ нууц үг оруулна уу")
+      alertError("Хэрэглэгчийн нууц үг оруулна уу")
       return
     }
 
@@ -106,6 +109,26 @@ export default function PosLoginPage() {
     }
   }
 
+  // Sync хийх (login screen дээр)
+  const handleSync = async () => {
+    setSyncing(true)
+    showLoading("Өгөгдөл татаж байна...")
+    try {
+      const success = await syncFromServer()
+      hideLoading()
+      setSyncing(false)
+      if (success) {
+        toastSuccess("Өгөгдөл амжилттай татагдлаа")
+      } else {
+        alertError("Өгөгдөл татах амжилтгүй", "Дахин оролдоно уу")
+      }
+    } catch (e: any) {
+      hideLoading()
+      setSyncing(false)
+      alertError("Алдаа гарлаа", e.message)
+    }
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       if (!isPaired) {
@@ -154,23 +177,6 @@ export default function PosLoginPage() {
         {!isPaired ? (
           // ═══ Device Pairing: Activation Code ═══
           <div className="space-y-4">
-            <div className="bg-primary/5 border border-primary/10 p-4 rounded-xl space-y-2">
-              <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                  <Smartphone className="h-4 w-4 text-primary" />
-                </div>
-                <div className="flex-1 text-sm">
-                  <p className="font-medium mb-1.5">Хэрхэн баталгаажуулах вэ?</p>
-                  <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                    <li>Вэб систем рүү нэвтэрнэ</li>
-                    <li>ПОС Төхөөрөмж цэснээс шинэ төхөөрөмж үүсгэнэ</li>
-                    <li>Идэвхжүүлэх кодыг хуулж авна</li>
-                    <li>Доорх талбарт оруулна</li>
-                  </ol>
-                </div>
-              </div>
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="activationCode">Идэвхжүүлэх код</Label>
               <Input
@@ -187,10 +193,10 @@ export default function PosLoginPage() {
             <Separator />
 
             <div className="space-y-2">
-              <Label htmlFor="adminCode">Админ нэвтрэх нэр</Label>
+              <Label htmlFor="adminCode">Хэрэглэгчийн код</Label>
               <Input
                 id="adminCode"
-                placeholder="Админ код"
+                placeholder="Хэрэглэгчийн нэвтрэх код"
                 value={adminCode}
                 onChange={(e) => setAdminCode(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -198,7 +204,7 @@ export default function PosLoginPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="adminPassword">Админ нууц үг</Label>
+              <Label htmlFor="adminPassword">Хэрэглэгчийн нууц үг</Label>
               <Input
                 id="adminPassword"
                 type="password"
@@ -216,17 +222,46 @@ export default function PosLoginPage() {
               <Lock className="h-4 w-4 mr-2" />
               Баталгаажуулах
             </Button>
+
+            {/* Заавар — info товч дарахад modal харагдана */}
+            <button
+              type="button"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+              onClick={() => setShowInfo(true)}
+            >
+              <Info className="h-4 w-4" />
+              Хэрхэн баталгаажуулах вэ?
+            </button>
+
+            <Dialog open={showInfo} onOpenChange={setShowInfo}>
+              <DialogContent className="max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>Хэрхэн баталгаажуулах вэ?</DialogTitle>
+                </DialogHeader>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                    <Smartphone className="h-4 w-4 text-primary" />
+                  </div>
+                  <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+                    <li>Вэб систем рүү нэвтэрнэ</li>
+                    <li>ПОС Төхөөрөмж цэснээс шинэ төхөөрөмж үүсгэнэ</li>
+                    <li>Идэвхжүүлэх кодыг хуулж авна</li>
+                    <li>Доорх талбарт оруулна</li>
+                  </ol>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         ) : (
           // ═══ User Login: Code + Password ═══
           <div className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="userCode">Нэвтрэх код</Label>
+              <Label htmlFor="userCode">ПОС хэрэглэгчийн код</Label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="userCode"
-                  placeholder="Код оруулна уу"
+                  placeholder="ПОС хэрэглэгчийн код оруулна уу"
                   value={userCode}
                   onChange={(e) => setUserCode(e.target.value)}
                   onKeyDown={handleKeyDown}
@@ -237,7 +272,7 @@ export default function PosLoginPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Нууц үг</Label>
+              <Label htmlFor="password">ПОС хэрэглэгчийн нууц үг</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -258,6 +293,14 @@ export default function PosLoginPage() {
                 onClick={handleLogin}
               >
                 Нэвтрэх
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleSync}
+                disabled={syncing}
+                title="Өгөгдөл дахин татах (шинэ хэрэглэгч нэмэгдсэн бол)"
+              >
+                <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
               </Button>
               <Button
                 variant="outline"
