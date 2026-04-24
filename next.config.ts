@@ -5,6 +5,7 @@ const isDev = process.env.NODE_ENV === "development"
 
 const nextConfig: NextConfig = {
   ...(isDev ? {} : { output: "export" }),
+  devIndicators: false,
   images: {
     unoptimized: true,
   },

@@ -521,13 +521,14 @@ export async function addPendingSale(sale: {
 
 export async function getPendingSales(): Promise<any[]> {
   const database = await getDb()
-  const rows = await database.select<any[]>('SELECT * FROM pending_sales WHERE uploaded = 0 ORDER BY created_at')
+  // Бүх билл буцаана (uploaded хэвээрээ үлдэнэ — POS солих хүртэл)
+  const rows = await database.select<any[]>('SELECT * FROM pending_sales ORDER BY created_at')
   return rows.map(row => ({
     id: row.id,
     createdAt: row.created_at,
     total: row.total,
     items: JSON.parse(row.items_json),
-    uploaded: false,
+    uploaded: row.uploaded === 1,
   }))
 }
 

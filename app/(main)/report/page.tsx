@@ -192,33 +192,33 @@ export default function PosReportPage() {
   }, [allSales, syncData.menus, syncData.menuGroups])
 
   return (
-    <div className="flex h-full flex-col bg-muted/30">
+    <div className="flex h-full flex-col bg-background">
       {/* Header */}
-      <div className="border-b bg-card px-4 py-3">
+      <div className="border-b bg-card/95 backdrop-blur-sm px-4 py-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={() => router.back()}>
+            <Button variant="outline" size="icon" onClick={() => router.back()} title="Буцах">
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-              <BarChart3 className="h-4 w-4 text-primary" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/15">
+              <BarChart3 className="h-[18px] w-[18px] text-primary" />
             </div>
             <div>
-              <h1 className="text-lg font-bold leading-tight">Тайлан</h1>
+              <h1 className="text-base font-bold leading-tight">Тайлан</h1>
               <p className="text-sm text-muted-foreground leading-tight">
                 Нийт {allSales.length} борлуулалт
               </p>
             </div>
           </div>
 
-          <div className="flex items-center rounded-lg border bg-muted/50 p-0.5">
+          <div className="flex items-center rounded-xl border bg-muted/40 p-0.5 shadow-[inset_0_1px_0_rgba(0,0,0,0.03)]">
             <Button
               variant={tab === "payment" ? "default" : "outline"}
               className={tab === "payment" ? "" : "border-0 bg-transparent hover:bg-background"}
               onClick={() => setTab("payment")}
             >
               <Banknote className="h-4 w-4 mr-2" />
-              Төлбөрийн төрөл
+              Төлбөр
             </Button>
             <Button
               variant={tab === "menugroup" ? "default" : "outline"}
@@ -241,7 +241,7 @@ export default function PosReportPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 slim-scroll">
+      <div className="flex-1 overflow-y-auto p-4 slim-scroll bg-muted/20">
         {tab === "payment" ? (
           <PaymentReport data={paymentSummary} syncData={syncData} />
         ) : tab === "menugroup" ? (

@@ -477,7 +477,9 @@ export const usePosStore = create<PosState>((set, get) => ({
 
         const lastSyncAt = await db.getLastSyncTime()
 
-        set({
+        // SQLite-д dancers, isDancerEnabled хадгалагддаггүй тул өмнө localStorage-аас
+        // сэргээсэн утгыг хадгалж үлдэнэ — нөгөө сэргээж хоосон болгохгүйн тулд
+        set((s) => ({
           syncData: {
             lastSyncAt,
             menus: menusWithPrice,
@@ -489,10 +491,10 @@ export const usePosStore = create<PosState>((set, get) => ({
             rooms: roomsWithCamel,
             tables: tablesWithCamel,
             posUsers,
-            dancers: [],
-            isDancerEnabled: 0,
+            dancers: s.syncData.dancers || [],
+            isDancerEnabled: s.syncData.isDancerEnabled ?? 0,
           },
-        })
+        }))
         
         // Pending sales
         const pendingSales = await db.getPendingSales()
@@ -580,18 +582,42 @@ export const usePosStore = create<PosState>((set, get) => ({
       storeName: null,
       posUser: null,
       cashSession: null,
+      // Бүх локал өгөгдлийг устгана — POS солих үед л
+      pendingSales: [],
+      openBills: [],
+      syncData: {
+        lastSyncAt: null,
+        menus: [],
+        menuGroups: [],
+        menuRecipes: [],
+        menuPrices: [],
+        discounts: [],
+        paymentTypes: [],
+        rooms: [],
+        tables: [],
+        posUsers: [],
+        dancers: [],
+        isDancerEnabled: 0,
+      },
     })
-    
+
     // SQLite устгах
     if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
       import('./pos-db').then(async (db) => {
         await db.clearDevice()
         await db.clearUserSession()
+        // Тохирвол sync data, pending sales зэргийг ч цэвэрлэх — функц байгаа эсэхийг try-catch
+        try { await (db as any).clearSyncData?.() } catch {}
+        try { await (db as any).clearPendingSales?.() } catch {}
+        try { await (db as any).clearOpenBills?.() } catch {}
       }).catch(() => {})
     }
-    
+
     // localStorage устгах
     localStorage.removeItem('session')
+    localStorage.removeItem('pending-sales')
+    localStorage.removeItem('open-bills')
+    localStorage.removeItem('sync-data')
   },
 
   posLogin: async (code, password) => {
@@ -884,10 +910,14 @@ export const usePosStore = create<PosState>((set, get) => ({
   uploadPendingSales: async () => {
     const { api } = await import('./api')
     const { pendingSales, posToken } = get()
-    if (!posToken || pendingSales.length === 0) return true
+    if (!posToken) return true
+
+    // Зөвхөн илгээгээгүй (мөн устгаагүй) борлуулалтыг шилжүүлнэ — давхар явахаас сэргийлнэ
+    const toUpload = pendingSales.filter((s) => !s.uploaded && !s.isDeleted)
+    if (toUpload.length === 0) return true
 
     try {
-      const sales = pendingSales.map(s => ({
+      const sales = toUpload.map(s => ({
         localId: s.id,
         tableDinnerSid: s.tableDinnerSid || s.tableSid || null,
         cashierSid: s.cashierSid,
@@ -919,21 +949,21 @@ export const usePosStore = create<PosState>((set, get) => ({
       }, { showLoading: false, showError: false })
 
       if (res.ok || res.data?.uploaded > 0) {
-        // Uploaded болсон борлуулалтуудыг тэмдэглэх (устгахгүй — тайланд ашиглана)
-        const uploadedIds = new Set(pendingSales.map(s => s.id))
+        // Зөвхөн илгээсэн ID-уудыг тэмдэглэх (хуучин uploaded хэвээрээ)
+        const uploadedIds = new Set(toUpload.map(s => s.id))
         const updatedSales = pendingSales.map(s => uploadedIds.has(s.id) ? { ...s, uploaded: true } : s)
-        set({ pendingSales: updatedSales.filter(s => !s.uploaded) })
+        set({ pendingSales: updatedSales })
 
         if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
           import('./pos-db').then(async (db) => {
-            const saleIds = pendingSales.map(s => s.id)
+            const saleIds = toUpload.map(s => s.id)
             await db.markSalesUploaded(saleIds)
             await db.markBillsUploaded(saleIds)
           }).catch(() => {})
         }
 
-        // localStorage-д зөвхөн upload хийгээгүй борлуулалтууд үлдэнэ
-        localStorage.setItem('pending-sales', JSON.stringify([]))
+        // localStorage-д бүгд хадгалагдана (uploaded тэмдэглэгээтэй)
+        localStorage.setItem('pending-sales', JSON.stringify(updatedSales))
         return true
       }
       return false

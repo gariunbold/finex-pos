@@ -30,6 +30,7 @@ export function useSale() {
 
   // Тооцооны хуудас state
   const [searchBills, setSearchBills] = useState("")
+  const [billsFilter, setBillsFilter] = useState<"all" | "unsent" | "sent">("all")
 
   // Билл preview dialog
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false)
@@ -46,8 +47,6 @@ export function useSale() {
   const [pendingMenu, setPendingMenu] = useState<any | null>(null)
   const [dancerChangeItemSid, setDancerChangeItemSid] = useState<string | null>(null)
 
-  // TIP / Бусад орлого dialog
-  const [tipOpen, setTipOpen] = useState(false)
 
   // Жетон хуваарилах dialog
   const [chipOpen, setChipOpen] = useState(false)
@@ -167,30 +166,6 @@ export function useSale() {
     setPendingMenu(null)
     setDancerChangeItemSid(itemSid)
     setDancerPickerOpen(true)
-  }
-
-  const addTip = (dancer: { sid: string; name?: string; nickname?: string }, amount: number, description?: string) => {
-    if (!dancer?.sid || !(amount > 0)) return
-    const dancerName = dancer.nickname || dancer.name || ''
-    const lineId = `__tip__${dancer.sid}_${Date.now()}`
-    const newItem: BillItem = {
-      menuSid: lineId,
-      code: 'TIP',
-      name: description ? `TIP · ${description}` : 'TIP',
-      price: amount,
-      quantity: 1,
-      amount,
-      isPaidService: true,
-      employeePercent: 100,
-      employeeAmount: amount,
-      dancerSid: dancer.sid,
-      dancerName,
-      isTip: true,
-      tipDescription: description,
-    }
-    const newItems = [...billItems, newItem]
-    setBillItems(newItems)
-    if (currentTableSid) autoSaveTableBill(newItems)
   }
 
   const selectDancer = (dancer: any) => {
@@ -609,6 +584,12 @@ export function useSale() {
   // ═══ Nav functions ═══
 
   const handleLogout = async () => {
+    const unsent = pendingSales.filter((s: any) => !s.uploaded && !s.isDeleted).length
+    if (unsent > 0) {
+      const { alertError } = useAlertStore.getState()
+      alertError("Илгээгээгүй мэдээлэл байна", `${unsent} борлуулалт серверт илгээгдээгүй байна. Эхлээд "Илгээх" дэлгэцээр илгээнэ үү.`)
+      return
+    }
     const confirmed = await confirm("Гарах", "Та системээс гарах уу?")
     if (confirmed) { posLogout(); router.replace("/login") }
   }
@@ -634,6 +615,8 @@ export function useSale() {
   const filteredBills = useMemo(() =>
     pendingSales.filter((sale) => {
       if (sale.isDeleted) return false
+      if (billsFilter === "unsent" && sale.uploaded) return false
+      if (billsFilter === "sent" && !sale.uploaded) return false
       if (!searchBills) return true
       const lower = searchBills.toLowerCase()
       return (
@@ -641,8 +624,18 @@ export function useSale() {
         sale.items.some((item: any) => item.name?.toLowerCase().includes(lower))
       )
     }),
-    [pendingSales, searchBills]
+    [pendingSales, searchBills, billsFilter]
   )
+
+  const billsCounts = useMemo(() => {
+    let unsent = 0, sent = 0
+    pendingSales.forEach((s: any) => {
+      if (s.isDeleted) return
+      if (s.uploaded) sent++
+      else unsent++
+    })
+    return { all: unsent + sent, unsent, sent }
+  }, [pendingSales])
 
   const showMenuPanel = saleMode === "menu"
   const showBillsPanel = saleMode === "bills"
@@ -672,7 +665,8 @@ export function useSale() {
 
     // Bills list
     searchBills, setSearchBills,
-    filteredBills, handleDeleteSale, printClosedBill,
+    filteredBills, billsFilter, setBillsFilter, billsCounts,
+    handleDeleteSale, printClosedBill,
 
     // Payment
     paymentOpen, setPaymentOpen,
@@ -689,9 +683,6 @@ export function useSale() {
     // Dancer
     dancerPickerOpen, setDancerPickerOpen,
     selectDancer, openDancerChange,
-
-    // TIP
-    tipOpen, setTipOpen, addTip,
 
     // Chip (жетон) — билл/төлбөрөөс хамааралгүй
     chipOpen, setChipOpen, billChips, addChip, removeChip, savePendingChips,

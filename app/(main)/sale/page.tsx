@@ -13,7 +13,7 @@ import { LucideIcon, getMenuImageSrc } from "./helpers"
 import { useSale } from "./use-sale"
 import { BillPanel } from "./bill-panel"
 import { JetonsPanel } from "./jetons-panel"
-import { PaymentDialog, PrintPreviewDialog, DancerPickerDialog, TipDialog } from "./dialogs"
+import { PaymentDialog, PrintPreviewDialog, DancerPickerDialog } from "./dialogs"
 
 export default function PosSalePage() {
   const sale = useSale()
@@ -36,19 +36,22 @@ export default function PosSalePage() {
       {/* ═══ Left Panel ═══ */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="border-b bg-card">
-          <div className="flex items-center justify-between px-4 py-3">
+        <div className="border-b bg-card/95 backdrop-blur-sm">
+          <div className="flex items-center justify-between px-4 py-2.5">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                <Coffee className="h-4 w-4 text-primary" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/15">
+                <Coffee className="h-[18px] w-[18px] text-primary" />
               </div>
               <div>
-                <div className="text-sm font-semibold leading-tight">{deviceName}</div>
+                <div className="text-sm font-semibold leading-tight flex items-center gap-1.5">
+                  {deviceName}
+                  <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" title="Холбогдсон" />
+                </div>
                 <div className="text-sm text-muted-foreground leading-tight">{posUser?.name}</div>
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="flex items-center rounded-lg border bg-muted/50 p-0.5">
+              <div className="flex items-center rounded-xl border bg-muted/40 p-0.5 shadow-[inset_0_1px_0_rgba(0,0,0,0.03)]">
                 <Button
                   variant={saleMode === "tables" || isTableBill || saleMode === "menu" ? "default" : "outline"}
                   className={saleMode === "tables" || isTableBill || saleMode === "menu" ? "" : "border-0 bg-transparent hover:bg-background"}
@@ -63,7 +66,7 @@ export default function PosSalePage() {
                   onClick={() => handleSwitchMode("bills")}
                 >
                   <FileText className="h-4 w-4 mr-2" />
-                  Тооцооны хуудас
+                  Тооцоо
                 </Button>
                 {syncData.isDancerEnabled === 1 && (
                   <Button
@@ -77,16 +80,16 @@ export default function PosSalePage() {
                 )}
               </div>
               <Separator orientation="vertical" className="h-7 mx-1" />
-              <Button variant="outline" onClick={() => router.push("/report")}>
+              <Button variant="outline" size="icon" onClick={() => router.push("/report")} title="Тайлан">
                 <BarChart3 className="h-4 w-4" />
               </Button>
-              <Button variant="outline" onClick={() => router.push("/sync")}>
+              <Button variant="outline" size="icon" onClick={() => router.push("/sync")} title="Өгөгдөл татах">
                 <Download className="h-4 w-4" />
               </Button>
-              <Button variant="outline" onClick={() => router.push("/upload")}>
+              <Button variant="outline" size="icon" onClick={() => router.push("/upload")} title="Өгөгдөл илгээх">
                 <Upload className="h-4 w-4" />
               </Button>
-              <Button variant="outline" onClick={handleLogout}>
+              <Button variant="outline" size="icon" onClick={handleLogout} title="Гарах">
                 <LogOut className="h-4 w-4" />
               </Button>
             </div>
@@ -324,7 +327,6 @@ export default function PosSalePage() {
       <PaymentDialog sale={sale} />
       <PrintPreviewDialog sale={sale} />
       <DancerPickerDialog sale={sale} />
-      <TipDialog sale={sale} />
     </div>
   )
 }

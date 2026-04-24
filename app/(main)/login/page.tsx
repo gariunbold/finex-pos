@@ -3,12 +3,10 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { usePosStore, useAlertStore } from "@/lib/store"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
-import { Smartphone, Lock, LogOut, Monitor, User, Info, RefreshCw } from "lucide-react"
+import {
+  Lock, LogOut, User, Info, RefreshCw, KeyRound, ShieldCheck, ArrowRight,
+  Wifi, WifiOff, Fingerprint, Smartphone, CheckCircle2,
+} from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 export default function PosLoginPage() {
@@ -23,93 +21,77 @@ export default function PosLoginPage() {
   const [password, setPassword] = useState("")
   const [showInfo, setShowInfo] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [online, setOnline] = useState(true)
+  const [now, setNow] = useState<Date | null>(null)
 
   useEffect(() => {
-    // Restore session from localStorage
     usePosStore.getState().restorePosSession()
+    setNow(new Date())
+    const t = setInterval(() => setNow(new Date()), 1000)
+    const up = () => setOnline(true)
+    const down = () => setOnline(false)
+    setOnline(navigator.onLine)
+    window.addEventListener("online", up)
+    window.addEventListener("offline", down)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener("online", up)
+      window.removeEventListener("offline", down)
+    }
   }, [])
 
-  // Device Pairing: Activation Code + User table-ийн хэрэглэгчийн баталгаажуулалт
   const handleActivate = async () => {
-    if (!activationCode.trim()) {
-      alertError("Идэвхжүүлэх код оруулна уу")
-      return
-    }
-    if (!adminCode.trim()) {
-      alertError("Хэрэглэгчийн код оруулна уу")
-      return
-    }
-    if (!adminPassword.trim()) {
-      alertError("Хэрэглэгчийн нууц үг оруулна уу")
-      return
-    }
+    if (!activationCode.trim()) return alertError("Идэвхжүүлэх код оруулна уу")
+    if (!adminCode.trim()) return alertError("Хэрэглэгчийн код оруулна уу")
+    if (!adminPassword.trim()) return alertError("Хэрэглэгчийн нууц үг оруулна уу")
 
     showLoading("Төхөөрөмж баталгаажуулж байна...")
     try {
       const success = await activateDevice(activationCode.trim(), adminCode.trim(), adminPassword.trim())
       hideLoading()
-
       if (success) {
         toastSuccess("Төхөөрөмж амжилттай баталгаажлаа")
-        setActivationCode("")
-        setAdminCode("")
-        setAdminPassword("")
-      } else {
-        alertError("Баталгаажуулалт амжилтгүй", "Код буруу эсвэл хүчингүй байна")
-      }
+        setActivationCode(""); setAdminCode(""); setAdminPassword("")
+      } else alertError("Баталгаажуулалт амжилтгүй", "Код буруу эсвэл хүчингүй байна")
     } catch (e: any) {
       hideLoading()
-      const msg = e?.response?.data?.error || e?.message || "Сервертэй холбогдож чадсангүй"
-      alertError("Алдаа гарлаа", msg)
+      alertError("Алдаа гарлаа", e?.response?.data?.error || e?.message || "Сервертэй холбогдож чадсангүй")
     }
   }
 
-  // User Login: Код + Нууц үг (paired device дээр)
   const handleLogin = async () => {
-    if (!userCode.trim()) {
-      alertError("Нэвтрэх код оруулна уу")
-      return
-    }
-    if (!password.trim()) {
-      alertError("Нууц үг оруулна уу")
-      return
-    }
+    if (!userCode.trim()) return alertError("Нэвтрэх код оруулна уу")
+    if (!password.trim()) return alertError("Нууц үг оруулна уу")
 
     showLoading("Нэвтэрч байна...")
     try {
       const success = await posLogin(userCode.trim(), password)
       hideLoading()
-
       if (success) {
         toastSuccess("Амжилттай нэвтэрлээ")
         const { cashSession } = usePosStore.getState()
-        if (cashSession) {
-          router.replace("/sale")
-        } else {
-          router.replace("/cash")
-        }
-      } else {
-        alertError("Нэвтрэх амжилтгүй", "Код эсвэл нууц үг буруу байна")
-      }
+        router.replace(cashSession ? "/sale" : "/cash")
+      } else alertError("Нэвтрэх амжилтгүй", "Код эсвэл нууц үг буруу байна")
     } catch (e: any) {
       hideLoading()
       alertError("Алдаа гарлаа", e.message)
     }
   }
 
-  // Төхөөрөмж солих (unpair)
   const handleUnpair = async () => {
-    const confirmed = await confirm(
-      "Төхөөрөмж солих",
-      "Үүнийг хийхэд одоогийн төхөөрөмжийн холболт тасрах ба шинээр баталгаажуулах шаардлагатай болно. Үргэлжлүүлэх үү?"
-    )
-    if (confirmed) {
+    const { pendingSales } = usePosStore.getState()
+    const unsent = pendingSales.filter((s: any) => !s.uploaded && !s.isDeleted).length
+    if (unsent > 0) {
+      alertError("Илгээгээгүй мэдээлэл байна", `${unsent} борлуулалт серверт илгээгдээгүй байна. Төхөөрөмж солихоос өмнө "Илгээх" дэлгэцээр илгээнэ үү.`)
+      return
+    }
+    const ok = await confirm("Төхөөрөмж солих", "Одоогийн төхөөрөмжийн холболт тасрах ба бүх локал өгөгдөл устах болно. Шинээр баталгаажуулах шаардлагатай. Үргэлжлүүлэх үү?")
+    if (ok) {
       unpairDevice()
       toastSuccess("Төхөөрөмжийн холболт тасарлаа")
     }
   }
 
-  // Sync хийх (login screen дээр)
   const handleSync = async () => {
     setSyncing(true)
     showLoading("Өгөгдөл татаж байна...")
@@ -117,11 +99,8 @@ export default function PosLoginPage() {
       const success = await syncFromServer()
       hideLoading()
       setSyncing(false)
-      if (success) {
-        toastSuccess("Өгөгдөл амжилттай татагдлаа")
-      } else {
-        alertError("Өгөгдөл татах амжилтгүй", "Дахин оролдоно уу")
-      }
+      if (success) toastSuccess("Өгөгдөл амжилттай татагдлаа")
+      else alertError("Өгөгдөл татах амжилтгүй", "Дахин оролдоно уу")
     } catch (e: any) {
       hideLoading()
       setSyncing(false)
@@ -131,187 +110,232 @@ export default function PosLoginPage() {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
-      if (!isPaired) {
-        handleActivate()
-      } else {
-        handleLogin()
-      }
+      if (!isPaired) handleActivate()
+      else handleLogin()
     }
   }
 
+  const pad2 = (n: number) => (n < 10 ? `0${n}` : String(n))
+  const timeStr = now ? `${pad2(now.getHours())}:${pad2(now.getMinutes())}` : "—"
+  const dateStr = now ? `${now.getFullYear()}.${pad2(now.getMonth() + 1)}.${pad2(now.getDate())}` : ""
+
   return (
-    <div className="relative flex h-full items-center justify-center bg-muted/30 overflow-hidden">
-      {/* Background decoration */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-primary/5 animate-orb-1" />
-        <div className="absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-primary/5 animate-orb-2" />
-        <div className="absolute top-1/4 right-1/4 h-3 w-3 rounded-full bg-primary/20 animate-dot-pulse" />
-        <div className="absolute bottom-1/3 left-1/3 h-2 w-2 rounded-full bg-primary/15 animate-dot-pulse" style={{ animationDelay: "1s" }} />
+    <div className="hero-canvas h-full overflow-y-auto slim-scroll flex flex-col">
+      <div className="hero-mesh">
+        <span /><span /><span />
       </div>
 
-      <Card className="relative w-full max-w-md p-8 space-y-6 animate-card-in shadow-lg border-border/60">
-        {/* Logo / Branding */}
-        <div className="space-y-3 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
-            <Monitor className="h-7 w-7 text-primary" />
+      {/* Top bar */}
+      <header className="relative z-10 flex items-center justify-between px-6 lg:px-10 py-5 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="mono-mark">
+            <span className="relative z-10 text-xl">F</span>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Finex POS</h1>
-            {!isPaired ? (
-              <p className="text-sm text-muted-foreground mt-1">
-                Төхөөрөмж баталгаажуулах
-              </p>
-            ) : (
-              <div className="mt-2 inline-flex items-center gap-2 rounded-lg bg-primary/8 px-3 py-1.5">
-                <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-                <span className="text-sm font-medium">{deviceName}</span>
-                <span className="text-sm text-muted-foreground">&middot;</span>
-                <span className="text-sm text-muted-foreground">{storeName}</span>
-              </div>
-            )}
+          <div className="text-white">
+            <div className="text-base font-bold tracking-tight leading-none">Finex POS</div>
+            <div className="text-xs text-white/55 mt-0.5 tracking-wide uppercase">Борлуулалтын систем</div>
           </div>
         </div>
 
-        <Separator />
-
-        {!isPaired ? (
-          // ═══ Device Pairing: Activation Code ═══
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="activationCode">Идэвхжүүлэх код</Label>
-              <Input
-                id="activationCode"
-                placeholder="Идэвхжүүлэх код оруулна уу"
-                value={activationCode}
-                onChange={(e) => setActivationCode(e.target.value)}
-                onKeyDown={handleKeyDown}
-                autoFocus
-                className="text-center text-lg font-mono tracking-wider"
-              />
-            </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <Label htmlFor="adminCode">Хэрэглэгчийн код</Label>
-              <Input
-                id="adminCode"
-                placeholder="Хэрэглэгчийн нэвтрэх код"
-                value={adminCode}
-                onChange={(e) => setAdminCode(e.target.value)}
-                onKeyDown={handleKeyDown}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="adminPassword">Хэрэглэгчийн нууц үг</Label>
-              <Input
-                id="adminPassword"
-                type="password"
-                placeholder="••••••"
-                value={adminPassword}
-                onChange={(e) => setAdminPassword(e.target.value)}
-                onKeyDown={handleKeyDown}
-              />
-            </div>
-
-            <Button
-              className="w-full"
-              onClick={handleActivate}
-            >
-              <Lock className="h-4 w-4 mr-2" />
-              Баталгаажуулах
-            </Button>
-
-            {/* Заавар — info товч дарахад modal харагдана */}
-            <button
-              type="button"
-              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-              onClick={() => setShowInfo(true)}
-            >
-              <Info className="h-4 w-4" />
-              Хэрхэн баталгаажуулах вэ?
-            </button>
-
-            <Dialog open={showInfo} onOpenChange={setShowInfo}>
-              <DialogContent className="max-w-sm">
-                <DialogHeader>
-                  <DialogTitle>Хэрхэн баталгаажуулах вэ?</DialogTitle>
-                </DialogHeader>
-                <div className="flex items-start gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                    <Smartphone className="h-4 w-4 text-primary" />
-                  </div>
-                  <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                    <li>Вэб систем рүү нэвтэрнэ</li>
-                    <li>ПОС Төхөөрөмж цэснээс шинэ төхөөрөмж үүсгэнэ</li>
-                    <li>Идэвхжүүлэх кодыг хуулж авна</li>
-                    <li>Доорх талбарт оруулна</li>
-                  </ol>
-                </div>
-              </DialogContent>
-            </Dialog>
+        <div className="hidden sm:flex items-center gap-2">
+          <div className="pill pill-dark tabular">
+            {online ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+            {online ? "Холболттой" : "Офлайн"}
           </div>
-        ) : (
-          // ═══ User Login: Code + Password ═══
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="userCode">ПОС хэрэглэгчийн код</Label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="userCode"
-                  placeholder="ПОС хэрэглэгчийн код оруулна уу"
-                  value={userCode}
-                  onChange={(e) => setUserCode(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  autoFocus
-                  className="pl-9"
-                />
-              </div>
-            </div>
+          <div className="pill pill-dark tabular">{timeStr}</div>
+        </div>
+      </header>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">ПОС хэрэглэгчийн нууц үг</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  className="pl-9"
-                />
-              </div>
-            </div>
+      {/* Center */}
+      <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-10 min-h-fit">
+        <div className="w-full max-w-[450px] space-y-6 fade-up my-auto">
+          
+          
 
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                onClick={handleLogin}
-              >
-                Нэвтрэх
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleSync}
-                disabled={syncing}
-                title="Өгөгдөл дахин татах (шинэ хэрэглэгч нэмэгдсэн бол)"
-              >
-                <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleUnpair}
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </div>
+          {/* Form card */}
+          <div className="glass-dark rounded-3xl p-6 fade-up delay-2">
+            {!isPaired ? (
+              <div className="space-y-4">
+                <FieldDark
+                  label="Идэвхжүүлэх код"
+                  icon={<KeyRound className="h-[15px] w-[15px]" />}
+                >
+                  <input
+                    type="text"
+                    autoFocus
+                    value={activationCode}
+                    onChange={(e) => setActivationCode(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Баталгаажуулах код"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="w-full bg-transparent border-0 outline-none text-white placeholder:text-white/25 text-sm font-mono"
+                  />
+                </FieldDark>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-white/10" />
+                  <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+                    Хэрэглэгч
+                  </span>
+                  <div className="flex-1 h-px bg-white/10" />
+                </div>
+
+                <FieldDark label="Админы код" icon={<User className="h-[15px] w-[15px]" />}>
+                  <input
+                    type="text"
+                    value={adminCode}
+                    onChange={(e) => setAdminCode(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="admin"
+                    className="w-full bg-transparent border-0 outline-none text-white placeholder:text-white/25 text-base"
+                  />
+                </FieldDark>
+
+                <FieldDark label="Нууц үг" icon={<Lock className="h-[15px] w-[15px]" />}>
+                  <input
+                    type="password"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="••••••"
+                    className="w-full bg-transparent border-0 outline-none text-white placeholder:text-white/25 text-base"
+                  />
+                </FieldDark>
+
+                <button
+                  onClick={handleActivate}
+                  className="sheen group relative w-full h-11 rounded-xl bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 shadow-[0_10px_30px_-10px_color-mix(in_oklch,var(--primary)_60%,transparent)] hover:brightness-110 active:translate-y-px transition-all mt-1"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Баталгаажуулах
+                  <ArrowRight className="h-4 w-4 ml-0.5 group-hover:translate-x-0.5 transition-transform" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowInfo(true)}
+                  className="w-full flex items-center justify-center gap-1.5 text-sm text-white/50 hover:text-white transition-colors pt-1"
+                >
+                  <Info className="h-3.5 w-3.5" />
+                  Хэрхэн идэвхжүүлэх код авах вэ?
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <FieldDark label="Кассчины код" icon={<User className="h-[15px] w-[15px]" />}>
+                  <input
+                    type="text"
+                    autoFocus
+                    value={userCode}
+                    onChange={(e) => setUserCode(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="cashier1"
+                    className="w-full bg-transparent border-0 outline-none text-white placeholder:text-white/25 text-base"
+                  />
+                </FieldDark>
+
+                <FieldDark label="Нууц үг" icon={<Lock className="h-[15px] w-[15px]" />}>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="••••••"
+                    className="w-full bg-transparent border-0 outline-none text-white placeholder:text-white/25 text-base"
+                  />
+                </FieldDark>
+
+                <button
+                  onClick={handleLogin}
+                  className="sheen group relative w-full h-11 rounded-xl bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 shadow-[0_10px_30px_-10px_color-mix(in_oklch,var(--primary)_60%,transparent)] hover:brightness-110 active:translate-y-px transition-all mt-1"
+                >
+                  <Fingerprint className="h-4 w-4" />
+                  Нэвтрэх
+                  <ArrowRight className="h-4 w-4 ml-0.5 group-hover:translate-x-0.5 transition-transform" />
+                </button>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={handleSync}
+                    disabled={syncing}
+                    className="flex-1 h-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50 transition-all"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+                    Шинэчлэх
+                  </button>
+                  <button
+                    onClick={handleUnpair}
+                    title="Төхөөрөмж солих"
+                    className="h-9 w-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white flex items-center justify-center transition-all"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer hint */}
+          <div className="text-center text-sm text-white/35 fade-up delay-3">
+            {dateStr}
+          </div>
+        </div>
+      </main>
+
+      {/* Info dialog */}
+      <Dialog open={showInfo} onOpenChange={setShowInfo}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Smartphone className="h-5 w-5 text-primary" />
+              Идэвхжүүлэх код авах
+            </DialogTitle>
+          </DialogHeader>
+          <ol className="space-y-3 text-sm">
+            {[
+              "Вэб системдээ админаар нэвтэрнэ",
+              "ПОС Төхөөрөмж цэснээс шинэ төхөөрөмж үүсгэнэ",
+              "Идэвхжүүлэх кодыг хуулж авна",
+              "Энэ дэлгэц дээр оруулж баталгаажуулна",
+            ].map((text, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">
+                  {i + 1}
+                </span>
+                <span className="text-foreground/80 leading-relaxed">{text}</span>
+              </li>
+            ))}
+          </ol>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+function FieldDark({
+  label, icon, hint, children,
+}: {
+  label: string
+  icon?: React.ReactNode
+  hint?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-1.5">
+        <label className="text-[11px] font-medium text-white/55 uppercase tracking-[0.12em]">{label}</label>
+        {hint && <span className="text-[11px] text-white/30">{hint}</span>}
+      </div>
+      <div className="ring-focus h-11 rounded-xl bg-white/[0.04] border border-white/10 flex items-stretch transition-all hover:bg-white/[0.06] hover:border-white/15 overflow-hidden">
+        {icon && (
+          <div className="flex w-10 shrink-0 items-center justify-center text-white/40 border-r border-white/8">
+            {icon}
           </div>
         )}
-      </Card>
+        <div className="flex-1 min-w-0 flex items-center px-3">{children}</div>
+      </div>
     </div>
   )
 }
