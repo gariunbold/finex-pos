@@ -125,9 +125,15 @@ async fn print_raw_to_printer(printer_name: Option<String>, bytes: Vec<u8>) -> R
             .ok_or_else(|| "Системд default принтер тохируулагдаагүй байна".to_string())?,
     };
 
+    let opts = printers::common::base::job::PrinterJobOptions {
+        name: Some("Finex POS Receipt"),
+        raw_properties: &[],
+        converter: printers::common::converters::Converter::None,
+    };
+
     printer
-        .print(&bytes, Some("Finex POS Receipt"))
-        .map_err(|e| format!("Хэвлэхэд алдаа гарлаа: {}", e))?;
+        .print(&bytes, opts)
+        .map_err(|e| format!("Хэвлэхэд алдаа гарлаа: {:?}", e))?;
 
     Ok(())
 }
