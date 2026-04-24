@@ -7,19 +7,20 @@ import { Separator } from "@/components/ui/separator"
 import { toMoney } from "@/lib/format"
 import {
   Search, Download, Upload, LogOut, LayoutGrid, ArrowLeft,
-  Coffee, Users, BarChart3, FileText, Printer, Trash2,
+  Coffee, Users, BarChart3, FileText, Printer, Trash2, Coins,
 } from "lucide-react"
 import { LucideIcon, getMenuImageSrc } from "./helpers"
 import { useSale } from "./use-sale"
 import { BillPanel } from "./bill-panel"
-import { PaymentDialog, PrintPreviewDialog } from "./dialogs"
+import { JetonsPanel } from "./jetons-panel"
+import { PaymentDialog, PrintPreviewDialog, DancerPickerDialog, TipDialog } from "./dialogs"
 
 export default function PosSalePage() {
   const sale = useSale()
 
   const {
     posUser, syncData, deviceName,
-    saleMode, showMenuPanel, showBillsPanel, isTableBill,
+    saleMode, showMenuPanel, showBillsPanel, showJetonsPanel, isTableBill,
     searchMenu, setSearchMenu, selectedGroupSid, setSelectedGroupSid,
     filteredMenus, addMenuItem, billItems,
     selectedRoomSid, setSelectedRoomSid,
@@ -64,6 +65,16 @@ export default function PosSalePage() {
                   <FileText className="h-4 w-4 mr-2" />
                   Тооцооны хуудас
                 </Button>
+                {syncData.isDancerEnabled === 1 && (
+                  <Button
+                    variant={showJetonsPanel ? "default" : "outline"}
+                    className={showJetonsPanel ? "" : "border-0 bg-transparent hover:bg-background"}
+                    onClick={() => handleSwitchMode("jetons")}
+                  >
+                    <Coins className="h-4 w-4 mr-2" />
+                    Жетон
+                  </Button>
+                )}
               </div>
               <Separator orientation="vertical" className="h-7 mx-1" />
               <Button variant="outline" onClick={() => router.push("/report")}>
@@ -159,8 +170,11 @@ export default function PosSalePage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 slim-scroll bg-muted/30">
-          {showMenuPanel ? (
+        <div className={`flex-1 min-h-0 bg-muted/30 ${showJetonsPanel ? "overflow-hidden pt-4" : "overflow-y-auto p-4 slim-scroll"}`}>
+          {showJetonsPanel ? (
+            /* ═══ Jeton panel ═══ */
+            <JetonsPanel sale={sale} />
+          ) : showMenuPanel ? (
             /* ═══ Menu Grid ═══ */
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 content-start">
               {filteredMenus.map((menu: any) => {
@@ -309,6 +323,8 @@ export default function PosSalePage() {
       {/* ═══ Dialogs ═══ */}
       <PaymentDialog sale={sale} />
       <PrintPreviewDialog sale={sale} />
+      <DancerPickerDialog sale={sale} />
+      <TipDialog sale={sale} />
     </div>
   )
 }

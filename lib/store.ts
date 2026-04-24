@@ -205,6 +205,8 @@ export interface SyncData {
   discounts: any[]
   paymentTypes: any[]
   posUsers: any[]
+  dancers: any[]
+  isDancerEnabled: number // 0/1 — админаас тохируулна
 }
 
 export interface BillItem {
@@ -215,11 +217,30 @@ export interface BillItem {
   quantity: number
   amount: number
   isCancelled?: boolean
+  isPaidService?: boolean
+  employeePercent?: number
+  employeeAmount?: number
+  dancerSid?: string
+  dancerName?: string
+  isTip?: boolean         // гараар нэмсэн TIP/Бусад орлого
+  tipDescription?: string
 }
 
 export interface LocalPayment {
   paymentType: string  // BillPaymentType sid
   amount: number
+}
+
+// Жетон хуваарилалт — bill-тэй хамт хадгална, upload-д тус тусдаа явна
+export interface ChipAssignment {
+  id: string                   // local id
+  dancerSid: string
+  dancerName: string
+  quantity: number
+  price: number                // нэгж үнэ
+  total: number                // quantity * price
+  description?: string
+  createdAt: string            // ISO
 }
 
 export interface LocalBill {
@@ -230,6 +251,7 @@ export interface LocalBill {
   cashierSid: string
   cashierName: string
   items: BillItem[]
+  chips?: ChipAssignment[]
   subtotal: number
   totalAmount: number
   isPaid: boolean
@@ -247,6 +269,7 @@ export interface PendingSale {
   tableDinnerSid: string | null
   cashierSid: string
   items: BillItem[]
+  chips?: ChipAssignment[]
   payments: LocalPayment[]
   total: number
   uploaded: boolean
@@ -309,6 +332,8 @@ export const usePosStore = create<PosState>((set, get) => ({
     rooms: [],
     tables: [],
     posUsers: [],
+    dancers: [],
+    isDancerEnabled: 0,
   },
   pendingSales: [],
   openBills: [],
@@ -331,11 +356,25 @@ export const usePosStore = create<PosState>((set, get) => ({
           posUser: current.posUser || data.posUser || null,
           cashSession: current.cashSession || data.cashSession || null,
         })
+        // isDancerEnabled-г activation үед хадгалсан байвал syncData-д restore хийнэ
+        if (typeof data.isDancerEnabled === 'number') {
+          const prevSync = get().syncData
+          set({ syncData: { ...prevSync, isDancerEnabled: data.isDancerEnabled } })
+        }
       }
 
       const syncSaved = localStorage.getItem('sync-data')
       if (syncSaved) {
-        set({ syncData: JSON.parse(syncSaved) })
+        const parsedSync = JSON.parse(syncSaved)
+        // sync-data-д isDancerEnabled байхгүй бол session-ээс авсан утгыг алдагдуулахгүйн тулд merge
+        set((s) => ({
+          syncData: {
+            ...parsedSync,
+            isDancerEnabled: typeof parsedSync.isDancerEnabled === 'number'
+              ? parsedSync.isDancerEnabled
+              : s.syncData.isDancerEnabled,
+          },
+        }))
       }
 
       const pendingSaved = localStorage.getItem('pending-sales')
@@ -450,6 +489,8 @@ export const usePosStore = create<PosState>((set, get) => ({
             rooms: roomsWithCamel,
             tables: tablesWithCamel,
             posUsers,
+            dancers: [],
+            isDancerEnabled: 0,
           },
         })
         
@@ -483,6 +524,15 @@ export const usePosStore = create<PosState>((set, get) => ({
           cashSession: null,
         }
         set(session)
+
+        // Бүжигчин модулийн тохиргоог activation үед шууд авна — sync хийлгүйгээр хэрэглэнэ
+        const prevSync = get().syncData
+        set({
+          syncData: {
+            ...prevSync,
+            isDancerEnabled: Number(pos.isDancerEnabled) === 1 ? 1 : 0,
+          },
+        })
         
         // SQLite хадгалах (Tauri mode)
         if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
@@ -506,6 +556,7 @@ export const usePosStore = create<PosState>((set, get) => ({
         const sessionWithUsers = {
           ...session,
           posUsers: posUsers || [],  // PosUsers хадгалах (browser mode login)
+          isDancerEnabled: Number(pos.isDancerEnabled) === 1 ? 1 : 0,
         }
         localStorage.setItem('session', JSON.stringify(sessionWithUsers))
         
@@ -751,6 +802,8 @@ export const usePosStore = create<PosState>((set, get) => ({
           rooms: d.rooms || [],
           tables: d.tables || [],
           posUsers: d.posUsers || [],
+          dancers: d.dancers || [],
+          isDancerEnabled: Number(d.pos?.isDancerEnabled) === 1 ? 1 : 0,
         }
 
         console.log('[SYNC] Sync data processed:', {
@@ -839,10 +892,21 @@ export const usePosStore = create<PosState>((set, get) => ({
         tableDinnerSid: s.tableDinnerSid || s.tableSid || null,
         cashierSid: s.cashierSid,
         items: s.items.map(item => ({
-          menuSid: item.menuSid,
+          // Бүжигчинтэй холбоотой мөр нь `${menuSid}__${dancerSid}` compound key-тэй — уг menuSid-г сэргээнэ
+          menuSid: item.menuSid.includes('__') ? item.menuSid.split('__')[0] : item.menuSid,
           price: item.price,
           quantity: item.quantity,
           isCancelled: !!item.isCancelled,
+          employeeSid: item.dancerSid || null,
+          employeePercent: item.employeePercent || 0,
+          employeeAmount: item.employeeAmount || 0,
+        })),
+        chips: (s.chips || []).map(c => ({
+          dancerSid: c.dancerSid,
+          quantity: c.quantity,
+          price: c.price,
+          description: c.description || null,
+          createdAt: c.createdAt,
         })),
         payments: s.payments,
         createdAt: s.createdAt,
@@ -912,6 +976,7 @@ export const usePosStore = create<PosState>((set, get) => ({
       tableDinnerSid: closedBill.tableSid,
       cashierSid: closedBill.cashierSid,
       items: closedBill.items,
+      chips: closedBill.chips,
       payments: closedBill.payments,
       total: closedBill.totalAmount,
       uploaded: false,

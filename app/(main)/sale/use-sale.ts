@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { usePosStore, useAlertStore } from "@/lib/store"
-import type { BillItem, LocalBill, LocalPayment, PendingSale } from "@/lib/store"
+import type { BillItem, LocalBill, LocalPayment, PendingSale, ChipAssignment } from "@/lib/store"
 import { toMoney } from "@/lib/format"
 
-export type SaleMode = "menu" | "tables" | "bills"
+export type SaleMode = "menu" | "tables" | "bills" | "jetons"
 
 export function useSale() {
   const router = useRouter()
@@ -20,6 +20,7 @@ export function useSale() {
   const [searchMenu, setSearchMenu] = useState("")
   const [selectedGroupSid, setSelectedGroupSid] = useState<string | null>(null)
   const [billItems, setBillItems] = useState<BillItem[]>([])
+  const [billChips, setBillChips] = useState<ChipAssignment[]>([])
 
   // Ширээ захиалгын state
   const [selectedRoomSid, setSelectedRoomSid] = useState<string | null>(null)
@@ -39,6 +40,18 @@ export function useSale() {
   const [paymentTypeSid, setPaymentTypeSid] = useState<string | null>(null)
   const [paymentAmount, setPaymentAmount] = useState("")
   const [paymentList, setPaymentList] = useState<LocalPayment[]>([])
+
+  // Бүжигчин сонгох dialog
+  const [dancerPickerOpen, setDancerPickerOpen] = useState(false)
+  const [pendingMenu, setPendingMenu] = useState<any | null>(null)
+  const [dancerChangeItemSid, setDancerChangeItemSid] = useState<string | null>(null)
+
+  // TIP / Бусад орлого dialog
+  const [tipOpen, setTipOpen] = useState(false)
+
+  // Жетон хуваарилах dialog
+  const [chipOpen, setChipOpen] = useState(false)
+  const [chipListOpen, setChipListOpen] = useState(false)
 
   // Auth redirect
   useEffect(() => {
@@ -112,6 +125,16 @@ export function useSale() {
   }
 
   const addMenuItem = (menu: any) => {
+    // Төлбөртэй үйлчилгээ (бүжигчинтэй холбоотой) бол өөр бүжигчинтэй нэмэх шаардлагатай.
+    // POS дээр isDancerEnabled=1 үед л бүжигчин сонгох dialog нээнэ
+    const isPaid = !!(menu.isPaidService ?? menu.is_paid_service)
+    if (isPaid && syncData.isDancerEnabled === 1) {
+      setPendingMenu(menu)
+      setDancerChangeItemSid(null)
+      setDancerPickerOpen(true)
+      return
+    }
+
     const existing = billItems.find(item => item.menuSid === menu.sid)
     let newItems: BillItem[]
     if (existing) {
@@ -138,6 +161,91 @@ export function useSale() {
     }
     setBillItems(newItems)
     if (currentTableSid) autoSaveTableBill(newItems)
+  }
+
+  const openDancerChange = (itemSid: string) => {
+    setPendingMenu(null)
+    setDancerChangeItemSid(itemSid)
+    setDancerPickerOpen(true)
+  }
+
+  const addTip = (dancer: { sid: string; name?: string; nickname?: string }, amount: number, description?: string) => {
+    if (!dancer?.sid || !(amount > 0)) return
+    const dancerName = dancer.nickname || dancer.name || ''
+    const lineId = `__tip__${dancer.sid}_${Date.now()}`
+    const newItem: BillItem = {
+      menuSid: lineId,
+      code: 'TIP',
+      name: description ? `TIP · ${description}` : 'TIP',
+      price: amount,
+      quantity: 1,
+      amount,
+      isPaidService: true,
+      employeePercent: 100,
+      employeeAmount: amount,
+      dancerSid: dancer.sid,
+      dancerName,
+      isTip: true,
+      tipDescription: description,
+    }
+    const newItems = [...billItems, newItem]
+    setBillItems(newItems)
+    if (currentTableSid) autoSaveTableBill(newItems)
+  }
+
+  const selectDancer = (dancer: any) => {
+    const percent = Number(pendingMenu?.employeePercent ?? pendingMenu?.employee_percent ?? 0) || 0
+
+    // Байгаа bill item-ийн бүжигчнийг солих
+    if (dancerChangeItemSid) {
+      const newItems = billItems.map(it =>
+        it.menuSid === dancerChangeItemSid
+          ? {
+              ...it,
+              dancerSid: dancer.sid,
+              dancerName: dancer.nickname || dancer.name,
+            }
+          : it
+      )
+      setBillItems(newItems)
+      if (currentTableSid) autoSaveTableBill(newItems)
+      setDancerChangeItemSid(null)
+      return
+    }
+
+    // Шинэ төлбөртэй үйлчилгээ нэмэх — бүжигчин тус бүрт өөр мөр гэж үзнэ
+    if (!pendingMenu) return
+    const menu = pendingMenu
+    const price = menu.price || 0
+    const lineId = `${menu.sid}__${dancer.sid}`
+    const existing = billItems.find(item => item.menuSid === lineId)
+    let newItems: BillItem[]
+    if (existing && !existing.isCancelled) {
+      const newQty = existing.quantity + 1
+      newItems = billItems.map(item =>
+        item.menuSid === lineId
+          ? {
+              ...item,
+              quantity: newQty,
+              amount: item.price * newQty,
+              employeeAmount: (item.price * newQty) * (percent / 100),
+            }
+          : item
+      )
+    } else {
+      newItems = [...billItems, {
+        menuSid: lineId, code: menu.code, name: menu.name,
+        price, quantity: 1, amount: price,
+        isPaidService: true,
+        employeePercent: percent,
+        employeeAmount: price * (percent / 100),
+        dancerSid: dancer.sid,
+        dancerName: dancer.nickname || dancer.name,
+      }]
+    }
+    setBillItems(newItems)
+    if (currentTableSid) autoSaveTableBill(newItems)
+    setPendingMenu(null)
   }
 
   const updateQuantity = (menuSid: string, newQty: number) => {
@@ -168,6 +276,47 @@ export function useSale() {
       setCurrentTableName("")
       setCurrentBillId(null)
     }
+  }
+
+  const addChip = (dancer: { sid: string; name?: string; nickname?: string }, quantity: number, price: number, description?: string) => {
+    if (!dancer?.sid || !(quantity > 0) || !(price > 0)) return
+    const chip: ChipAssignment = {
+      id: `chip-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      dancerSid: dancer.sid,
+      dancerName: dancer.nickname || dancer.name || '',
+      quantity,
+      price,
+      total: quantity * price,
+      description,
+      createdAt: new Date().toISOString(),
+    }
+    setBillChips((prev) => [...prev, chip])
+  }
+
+  const removeChip = (id: string) => {
+    setBillChips((prev) => prev.filter((c) => c.id !== id))
+  }
+
+  const savePendingChips = () => {
+    if (billChips.length === 0) return
+    const chipTotal = billChips.reduce((s, c) => s + c.total, 0)
+    const saleId = `chipsale-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    addPendingSale({
+      id: saleId,
+      createdAt: new Date().toISOString(),
+      closedAt: new Date().toISOString(),
+      tableSid: null,
+      tableDinnerSid: null,
+      cashierSid: posUser?.sid || "",
+      items: [],
+      chips: billChips,
+      payments: [],
+      total: chipTotal,
+      uploaded: false,
+    })
+    toastSuccess(`Жетон хадгалагдлаа — ${toMoney(chipTotal)}`)
+    setBillChips([])
+    setChipOpen(false)
   }
 
   // ═══ Ширээ functions ═══
@@ -372,15 +521,21 @@ export function useSale() {
   ${cashierName ? `<div class="center">Кассчин: ${cashierName}</div>` : ''}
   <div class="line"></div>
   <div class="items">
-    ${items.map((item, i) => `
+    ${items.map((item, i) => {
+      const anyItem = item as any
+      const dancerName: string | undefined = anyItem.dancerName
+      return `
       <div class="row">
         <span>${i + 1}. ${item.name}</span>
       </div>
+      ${dancerName ? `<div class="row" style="padding-left:12px;font-style:italic">
+        <span>⇢ ${dancerName}</span>
+      </div>` : ''}
       <div class="row" style="padding-left:12px">
         <span>${toMoney(item.price)} x ${item.quantity}</span>
         <span>${toMoney(item.amount)}</span>
       </div>
-    `).join('')}
+    `}).join('')}
   </div>
   <div class="line"></div>
   <div class="row total">
@@ -461,12 +616,12 @@ export function useSale() {
   const handleSwitchMode = (mode: SaleMode) => {
     if (mode === "tables" && currentTableSid) {
       handleBackToTables()
-    } else if (mode === "bills") {
+    } else if (mode === "bills" || mode === "jetons") {
       setBillItems([])
       setCurrentTableSid(null)
       setCurrentTableName("")
       setCurrentBillId(null)
-      setSaleMode("bills")
+      setSaleMode(mode)
     } else {
       setBillItems([])
       setCurrentTableSid(null)
@@ -491,13 +646,14 @@ export function useSale() {
 
   const showMenuPanel = saleMode === "menu"
   const showBillsPanel = saleMode === "bills"
+  const showJetonsPanel = saleMode === "jetons"
 
   return {
     // Store data
     posUser, syncData, deviceName, pendingSales,
 
     // Mode
-    saleMode, showMenuPanel, showBillsPanel, isTableBill,
+    saleMode, showMenuPanel, showBillsPanel, showJetonsPanel, isTableBill,
 
     // Menu
     searchMenu, setSearchMenu,
@@ -529,6 +685,17 @@ export function useSale() {
     // Print
     printPreviewOpen, setPrintPreviewOpen,
     printPreviewEBarimt, printBill, doPrintBill,
+
+    // Dancer
+    dancerPickerOpen, setDancerPickerOpen,
+    selectDancer, openDancerChange,
+
+    // TIP
+    tipOpen, setTipOpen, addTip,
+
+    // Chip (жетон) — билл/төлбөрөөс хамааралгүй
+    chipOpen, setChipOpen, billChips, addChip, removeChip, savePendingChips,
+    chipListOpen, setChipListOpen,
 
     // Nav
     handleSwitchMode, handleLogout, router,

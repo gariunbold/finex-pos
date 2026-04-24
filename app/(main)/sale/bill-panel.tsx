@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { toMoney } from "@/lib/format"
-import { ShoppingCart, Trash2, Plus, Minus, Printer, FileText } from "lucide-react"
+import { ShoppingCart, Trash2, Plus, Minus, Printer, FileText, Sparkles, Coins } from "lucide-react"
 import type { UseSaleReturn } from "./use-sale"
 
 export function BillPanel({ sale }: { sale: UseSaleReturn }) {
@@ -12,7 +12,11 @@ export function BillPanel({ sale }: { sale: UseSaleReturn }) {
     isTableBill, currentTableName,
     updateQuantity, clearBill,
     openPaymentDialog, printBill, router,
+    openDancerChange,
+    setTipOpen,
+    syncData,
   } = sale
+  const isDancerEnabled = syncData.isDancerEnabled === 1
 
   return (
     <div className="w-[360px] flex flex-col border-l bg-card shadow-[-1px_0_3px_rgba(0,0,0,0.04)]">
@@ -76,6 +80,15 @@ export function BillPanel({ sale }: { sale: UseSaleReturn }) {
                 ) : (
                   <div className="text-sm text-muted-foreground">{toMoney(item.price)} x {item.quantity}</div>
                 )}
+                {!item.isCancelled && item.dancerName && (
+                  <button
+                    onClick={() => openDancerChange(item.menuSid)}
+                    className="mt-0.5 inline-flex items-center gap-1 text-sm text-primary hover:underline cursor-pointer"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    {item.dancerName}
+                  </button>
+                )}
               </div>
               {item.isCancelled ? (
                 <Button
@@ -116,6 +129,16 @@ export function BillPanel({ sale }: { sale: UseSaleReturn }) {
         </div>
         <Separator />
         <div className="p-3 space-y-2">
+          {isDancerEnabled && (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setTipOpen(true)}
+            >
+              <Coins className="h-4 w-4 mr-2" />
+              TIP нэмэх
+            </Button>
+          )}
           <Button
             className="w-full h-11 text-sm font-semibold"
             onClick={openPaymentDialog}

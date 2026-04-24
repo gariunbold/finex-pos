@@ -10,10 +10,10 @@ import { Separator } from "@/components/ui/separator"
 import { toMoney } from "@/lib/format"
 import {
   ArrowLeft, BarChart3, Banknote, CreditCard, QrCode,
-  TrendingUp, ShoppingBag, Layers, Receipt,
+  TrendingUp, ShoppingBag, Layers, Receipt, Sparkles,
 } from "lucide-react"
 
-type Tab = "payment" | "menugroup"
+type Tab = "payment" | "menugroup" | "dancer"
 
 function getPaymentLabel(sid: string, syncData: any): { label: string; icon: typeof Banknote } {
   const pt = syncData.paymentTypes?.find((p: any) => p.sid === sid)
@@ -77,6 +77,65 @@ export default function PosReportPage() {
       .sort((a, b) => b.total - a.total)
 
     return { items, grandTotal, saleCount }
+  }, [allSales])
+
+  // ═══ Бүжигчний орлогын тайлан ═══
+  const dancerSummary = useMemo(() => {
+    const map = new Map<string, {
+      dancerSid: string
+      dancerName: string
+      billCount: number
+      totalRevenue: number    // хэрэглэгчээс орсон (item.amount)
+      totalEmployee: number   // бүжигчинд ногдсон (item.employeeAmount)
+      items: Map<string, { name: string; quantity: number; total: number; employeeAmount: number }>
+    }>()
+    let grandRevenue = 0
+    let grandEmployee = 0
+
+    for (const sale of allSales) {
+      const seenInBill = new Set<string>()
+      for (const item of (sale.items || [])) {
+        const anyItem = item as any
+        const dancerSid = anyItem.dancerSid
+        if (!dancerSid || item.isCancelled) continue
+        const dancerName: string = anyItem.dancerName || '—'
+        const employeeAmount = Number(anyItem.employeeAmount || 0)
+
+        if (!map.has(dancerSid)) {
+          map.set(dancerSid, {
+            dancerSid, dancerName,
+            billCount: 0,
+            totalRevenue: 0,
+            totalEmployee: 0,
+            items: new Map(),
+          })
+        }
+        const g = map.get(dancerSid)!
+        if (!seenInBill.has(dancerSid)) {
+          g.billCount += 1
+          seenInBill.add(dancerSid)
+        }
+        g.totalRevenue += item.amount
+        g.totalEmployee += employeeAmount
+        grandRevenue += item.amount
+        grandEmployee += employeeAmount
+
+        const key = item.menuSid || item.name
+        if (!g.items.has(key)) {
+          g.items.set(key, { name: item.name, quantity: 0, total: 0, employeeAmount: 0 })
+        }
+        const it = g.items.get(key)!
+        it.quantity += item.quantity
+        it.total += item.amount
+        it.employeeAmount += employeeAmount
+      }
+    }
+
+    const rows = Array.from(map.values())
+      .map(g => ({ ...g, items: Array.from(g.items.values()).sort((a, b) => b.total - a.total) }))
+      .sort((a, b) => b.totalEmployee - a.totalEmployee)
+
+    return { rows, grandRevenue, grandEmployee }
   }, [allSales])
 
   // ═══ Цэсний бүлгийн тайлан ═══
@@ -169,6 +228,14 @@ export default function PosReportPage() {
               <Layers className="h-4 w-4 mr-2" />
               Цэсний бүлэг
             </Button>
+            <Button
+              variant={tab === "dancer" ? "default" : "outline"}
+              className={tab === "dancer" ? "" : "border-0 bg-transparent hover:bg-background"}
+              onClick={() => setTab("dancer")}
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              Бүжигчин
+            </Button>
           </div>
         </div>
       </div>
@@ -177,8 +244,10 @@ export default function PosReportPage() {
       <div className="flex-1 overflow-y-auto p-4 slim-scroll">
         {tab === "payment" ? (
           <PaymentReport data={paymentSummary} syncData={syncData} />
-        ) : (
+        ) : tab === "menugroup" ? (
           <MenuGroupReport data={menuGroupSummary} />
+        ) : (
+          <DancerReport data={dancerSummary} />
         )}
       </div>
     </div>
@@ -352,6 +421,105 @@ function MenuGroupReport({ data }: { data: { groups: { name: string; quantity: n
                         </div>
                       )
                     })}
+                  </div>
+                </div>
+              )}
+            </Card>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ═══ Бүжигчний орлогын тайлан ═══
+interface DancerRow {
+  dancerSid: string
+  dancerName: string
+  billCount: number
+  totalRevenue: number
+  totalEmployee: number
+  items: { name: string; quantity: number; total: number; employeeAmount: number }[]
+}
+function DancerReport({ data }: { data: { rows: DancerRow[]; grandRevenue: number; grandEmployee: number } }) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  if (data.rows.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/80 mb-3">
+          <Sparkles className="h-8 w-8 opacity-40" />
+        </div>
+        <p className="text-sm">Бүжигчинтэй борлуулалт байхгүй байна</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-4">
+      <Card className="p-5">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+            <Sparkles className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Бүжигчдийн нийт орлого</div>
+            <div className="text-2xl font-bold tracking-tight">{toMoney(data.grandEmployee)}</div>
+          </div>
+        </div>
+        <div className="flex gap-4 text-sm text-muted-foreground">
+          <span>Бүжигчин: <span className="font-semibold text-foreground">{data.rows.length}</span></span>
+          <span>Үйлчилгээний дүн: <span className="font-semibold text-foreground">{toMoney(data.grandRevenue)}</span></span>
+        </div>
+      </Card>
+
+      <div className="space-y-2">
+        {data.rows.map((r) => {
+          const percent = data.grandEmployee > 0 ? (r.totalEmployee / data.grandEmployee) * 100 : 0
+          const isExpanded = expanded === r.dancerSid
+          return (
+            <Card key={r.dancerSid} className="overflow-hidden">
+              <div
+                className="p-4 cursor-pointer hover:bg-muted/30 transition-colors"
+                onClick={() => setExpanded(isExpanded ? null : r.dancerSid)}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-semibold">{r.dancerName}</span>
+                      <span className="text-sm font-bold">{toMoney(r.totalEmployee)}</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} />
+                    </div>
+                    <div className="flex items-center justify-between mt-1.5 text-sm text-muted-foreground">
+                      <span>{r.billCount} тооцоо · үйлчилгээ: {toMoney(r.totalRevenue)}</span>
+                      <span>{percent.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="border-t bg-muted/20">
+                  <div className="px-4 py-2">
+                    <div className="flex items-center text-sm text-muted-foreground py-1.5 border-b border-border/50">
+                      <span className="flex-1">Цэс</span>
+                      <span className="w-16 text-right">Тоо</span>
+                      <span className="w-28 text-right">Үйлчилгээ</span>
+                      <span className="w-28 text-right">Бүжигчин</span>
+                    </div>
+                    {r.items.map((it, idx) => (
+                      <div key={idx} className="flex items-center text-sm py-2 border-b border-border/30 last:border-0">
+                        <span className="flex-1 truncate font-medium">{it.name}</span>
+                        <span className="w-16 text-right text-muted-foreground">{it.quantity}</span>
+                        <span className="w-28 text-right text-muted-foreground">{toMoney(it.total)}</span>
+                        <span className="w-28 text-right font-semibold">{toMoney(it.employeeAmount)}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
