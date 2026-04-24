@@ -87,6 +87,51 @@ async fn run_installer(path: String) -> Result<(), String> {
     Ok(())
 }
 
+// ═══════════════════════════════════════════════════════════
+//  THERMAL PRINTER (raw ESC/POS bytes)
+// ═══════════════════════════════════════════════════════════
+
+#[derive(serde::Serialize)]
+struct PrinterInfo {
+    name: String,
+    is_default: bool,
+}
+
+#[tauri::command]
+async fn list_printers() -> Result<Vec<PrinterInfo>, String> {
+    let printers = printers::get_printers();
+    Ok(printers
+        .into_iter()
+        .map(|p| PrinterInfo {
+            is_default: p.is_default,
+            name: p.name,
+        })
+        .collect())
+}
+
+#[tauri::command]
+async fn get_default_printer_name() -> Result<Option<String>, String> {
+    let p = printers::get_default_printer();
+    Ok(p.map(|x| x.name))
+}
+
+#[tauri::command]
+async fn print_raw_to_printer(printer_name: Option<String>, bytes: Vec<u8>) -> Result<(), String> {
+    // Тодорхой нэр өгсөн бол түүгээр; үгүй бол default
+    let printer = match printer_name {
+        Some(n) if !n.trim().is_empty() => printers::get_printer_by_name(&n)
+            .ok_or_else(|| format!("Принтер олдсонгүй: {}", n))?,
+        _ => printers::get_default_printer()
+            .ok_or_else(|| "Системд default принтер тохируулагдаагүй байна".to_string())?,
+    };
+
+    printer
+        .print(&bytes, Some("Finex POS Receipt"))
+        .map_err(|e| format!("Хэвлэхэд алдаа гарлаа: {}", e))?;
+
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
@@ -95,7 +140,15 @@ fn main() {
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .invoke_handler(tauri::generate_handler![http_post, http_get, download_file, run_installer])
+        .invoke_handler(tauri::generate_handler![
+            http_post,
+            http_get,
+            download_file,
+            run_installer,
+            list_printers,
+            get_default_printer_name,
+            print_raw_to_printer
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

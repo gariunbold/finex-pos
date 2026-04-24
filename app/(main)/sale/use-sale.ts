@@ -536,26 +536,59 @@ export function useSale() {
 
   const printReceipt = (html: string) => {
     const printWindow = window.open('', '_blank', 'width=240,height=600')
-    if (printWindow) {
-      printWindow.document.write(html)
-      printWindow.document.close()
-      printWindow.focus()
-      printWindow.print()
-      printWindow.close()
+    if (!printWindow) return
+    printWindow.document.write(html)
+    printWindow.document.close()
+    printWindow.focus()
+    // print() дараа шууд close хийхгүй — onafterprint-аар хүлээнэ
+    printWindow.onafterprint = () => printWindow.close()
+    setTimeout(() => printWindow.print(), 100)
+    // Хэрэв onafterprint асуумжаар триггер болохгүй бол 30 сек дараа хаах
+    setTimeout(() => { try { printWindow.close() } catch {} }, 30000)
+  }
+
+  const printReceiptDirect = async (input: import("@/lib/escpos").ReceiptInput, htmlFallback: string) => {
+    const escpos = await import("@/lib/escpos")
+    if (!escpos.isTauri()) {
+      // Browser fallback
+      printReceipt(htmlFallback)
+      return
+    }
+    const result = await escpos.printReceipt(input)
+    if (!result.ok) {
+      // Таурид алдаа гарвал HTML print-р fallback
+      console.error("[PRINT] ESC/POS алдаа:", result.error)
+      alertError("Принтерт хэвлэхэд алдаа гарлаа", result.error + "\n\nХөтчийн print диалог нээгдэнэ.")
+      printReceipt(htmlFallback)
     }
   }
 
-  const doPrintBill = () => {
+  const doPrintBill = async () => {
     const activeItems = billItems.filter(i => !i.isCancelled)
+    const dateStr = new Date().toLocaleString("mn-MN")
     const html = buildReceiptHtml({
       items: activeItems,
       total: billTotal,
-      dateStr: new Date().toLocaleString("mn-MN"),
+      dateStr,
       tableName: isTableBill ? currentTableName : undefined,
       cashierName: posUser?.name,
       ebarimt: printPreviewEBarimt,
     })
-    printReceipt(html)
+    await printReceiptDirect({
+      storeName: deviceName || "Finex POS",
+      dateStr,
+      tableName: isTableBill ? currentTableName : undefined,
+      cashierName: posUser?.name,
+      items: activeItems.map((it: any) => ({
+        name: it.name,
+        price: it.price,
+        quantity: it.quantity,
+        amount: it.amount,
+        dancerName: it.dancerName,
+      })),
+      total: billTotal,
+      ebarimt: printPreviewEBarimt,
+    }, html)
     setPrintPreviewOpen(false)
   }
 
@@ -571,14 +604,26 @@ export function useSale() {
     toastSuccess("Тооцоо устгагдлаа")
   }
 
-  const printClosedBill = (sale: PendingSale) => {
+  const printClosedBill = async (sale: PendingSale) => {
     const activeItems = sale.items.filter((i: any) => !i.isCancelled)
+    const dateStr = new Date(sale.createdAt).toLocaleString("mn-MN")
     const html = buildReceiptHtml({
       items: activeItems,
       total: sale.total,
-      dateStr: new Date(sale.createdAt).toLocaleString("mn-MN"),
+      dateStr,
     })
-    printReceipt(html)
+    await printReceiptDirect({
+      storeName: deviceName || "Finex POS",
+      dateStr,
+      items: activeItems.map((it: any) => ({
+        name: it.name,
+        price: it.price,
+        quantity: it.quantity,
+        amount: it.amount,
+        dancerName: it.dancerName,
+      })),
+      total: sale.total,
+    }, html)
   }
 
   // ═══ Nav functions ═══

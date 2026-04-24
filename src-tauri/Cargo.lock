@@ -977,6 +977,7 @@ checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 name = "finex-pos"
 version = "0.2.8"
 dependencies = [
+ "printers",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3048,6 +3049,15 @@ checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
 dependencies = [
  "proc-macro2",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "printers"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9973d6bf0ed339da9230a83eccbd7c2564f392bdc80246853645e9a60efb38b0"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

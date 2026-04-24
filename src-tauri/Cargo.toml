@@ -19,6 +19,7 @@ tauri-plugin-process = "2"
 reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+printers = "2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 # No additional dependencies needed
