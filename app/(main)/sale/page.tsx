@@ -1,13 +1,13 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { Input } from "@/components/ui/input"
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
-import { toMoney } from "@/lib/format"
+import { DatePicker } from "@/components/ui/date-picker"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { toMoney, toMoney0, datetimeToStr } from "@/lib/format"
 import {
-  Search, Download, Upload, LogOut, LayoutGrid, ArrowLeft,
-  Users, BarChart3, FileText, Coins, Clock, ReceiptText, Sparkles, Settings, ChevronRight,
-  Lock, LockOpen, Banknote,
+  Search, LayoutGrid, ArrowLeft,
+  Users, FileText, Coins,
 } from "lucide-react"
 import { LucideIcon, getMenuImageSrc } from "./helpers"
 import { useSale } from "./use-sale"
@@ -15,22 +15,13 @@ import { BillPanel } from "./bill-panel"
 import { JetonsPanel } from "./jetons-panel"
 import { BillDetailDialog } from "./bill-detail"
 import { PaymentDialog, PrintPreviewDialog, DancerPickerDialog } from "./dialogs"
-import { usePosStore } from "@/lib/store"
 
 export default function PosSalePage() {
   const sale = useSale()
-  const cashSession = usePosStore((s) => s.cashSession)
-  const [now, setNow] = useState<Date | null>(null)
   const [openBillDetail, setOpenBillDetail] = useState<any | null>(null)
 
-  useEffect(() => {
-    setNow(new Date())
-    const t = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(t)
-  }, [])
-
   const {
-    posUser, syncData, deviceName,
+    syncData,
     saleMode, showMenuPanel, showBillsPanel, showJetonsPanel, isTableBill,
     searchMenu, setSearchMenu, selectedGroupSid, setSelectedGroupSid,
     filteredMenus, addMenuItem, billItems,
@@ -38,10 +29,23 @@ export default function PosSalePage() {
     currentTableName,
     filteredTables, getTableBill, handleTableClick, handleBackToTables,
     searchBills, setSearchBills,
+    billsDate, setBillsDate,
     filteredBills, billsFilter, setBillsFilter, billsCounts,
-    handleSwitchMode, handleLogout, router,
+    handleSwitchMode,
     pendingSales,
   } = sale
+
+  const tablesMap = useMemo(() => {
+    const m = new Map<string, any>()
+    for (const t of syncData.tables as any[]) m.set(t.sid, t)
+    return m
+  }, [syncData.tables])
+
+  const roomsMap = useMemo(() => {
+    const m = new Map<string, any>()
+    for (const r of syncData.rooms as any[]) m.set(r.sid, r)
+    return m
+  }, [syncData.rooms])
 
   const kpis = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10)
@@ -57,225 +61,38 @@ export default function PosSalePage() {
     return { revenue, count, occupied, totalTables: (syncData.tables as any[]).length }
   }, [pendingSales, syncData.tables, getTableBill])
 
-  const pad2 = (n: number) => (n < 10 ? `0${n}` : String(n))
-  const timeStr = now ? `${pad2(now.getHours())}:${pad2(now.getMinutes())}` : "--:--"
-
-  const isDancerMode = syncData.isDancerEnabled === 1
   const navItems = [
     { key: "tables", icon: LayoutGrid, label: "Ширээ", mode: "tables" as const, active: saleMode === "tables" || isTableBill || saleMode === "menu" },
-    { key: "bills", icon: FileText, label: "Тооцоо", mode: "bills" as const, active: saleMode === "bills" },
-    ...(isDancerMode ? [{ key: "jetons", icon: Coins, label: "Жетон", mode: "jetons" as const, active: showJetonsPanel }] : []),
-  ]
-
-  const toolItems = [
-    { key: "report", icon: BarChart3, label: "Тайлан", onClick: () => router.push("/report") },
-    { key: "sync", icon: Download, label: "Татах", onClick: () => router.push("/sync") },
-    { key: "upload", icon: Upload, label: "Илгээх", onClick: () => router.push("/upload") },
   ]
 
   return (
     <div className="flex h-full bg-background">
-      {/* ═══════════════ Left Rail ═══════════════ */}
-      <aside className="w-[80px] shrink-0 flex flex-col items-center py-4 gap-3 bg-gradient-to-b from-card to-card/95 border-r border-border/60">
-        <div className="mono-mark scale-[0.85]">
-          <span className="relative z-10 text-base">F</span>
-        </div>
-        <div className="w-9 h-px bg-border/60 my-1" />
-
-        <nav className="flex flex-col items-center gap-1.5 w-full px-2">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            return (
-              <button
-                key={item.key}
-                onClick={() => handleSwitchMode(item.mode)}
-                className={`group relative w-full h-14 rounded-2xl flex flex-col items-center justify-center gap-0.5 transition-all ${
-                  item.active
-                    ? "bg-primary text-primary-foreground shadow-[0_8px_20px_-8px_color-mix(in_oklch,var(--primary)_60%,transparent)]"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-              >
-                {item.active && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-r-full bg-primary -ml-2" />
-                )}
-                <Icon className="h-[18px] w-[18px]" />
-                <span className="text-[10px] font-medium leading-none">{item.label}</span>
-              </button>
-            )
-          })}
-        </nav>
-
-        <div className="flex-1" />
-
-        <div className="flex flex-col items-center gap-1.5 w-full px-2">
-          {toolItems.map((t) => {
-            const Icon = t.icon
-            return (
-              <button
-                key={t.key}
-                onClick={t.onClick}
-                className="w-full h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                title={t.label}
-              >
-                <Icon className="h-[16px] w-[16px]" />
-                <span className="text-[9px] leading-none">{t.label}</span>
-              </button>
-            )
-          })}
-        </div>
-
-        <div className="w-9 h-px bg-border/60 my-1" />
-
-        {/* User popover */}
-        <Popover>
-          <PopoverTrigger
-            render={(props) => (
-              <button
-                {...props}
-                className="group w-12 h-12 rounded-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5 hover:from-primary/30 hover:to-primary/10 transition-all relative"
-                title={`${posUser?.name} · Цэс`}
-              >
-                <span className="text-sm font-bold text-primary">
-                  {(posUser?.name || "?").slice(0, 1).toUpperCase()}
-                </span>
-                <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-card animate-pulse" />
-              </button>
-            )}
-          />
-          <PopoverContent side="right" align="end" sideOffset={12} className="w-72 p-0 overflow-hidden">
-            <div className="px-4 py-3.5 bg-gradient-to-br from-primary/[0.06] via-card to-card border-b border-border/60">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/25 to-primary/10 text-primary text-sm font-bold ring-1 ring-primary/15">
-                  {(posUser?.name || "?").slice(0, 1).toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold truncate">{posUser?.name || "—"}</div>
-                  <div className="text-xs text-muted-foreground truncate">{deviceName}</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-4 py-3 space-y-2.5 border-b border-border/60">
-              {cashSession ? (
-                <>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="pill pill-success">
-                      <LockOpen className="h-3 w-3" />
-                      Касс нээлттэй
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-lg bg-muted/40 px-2.5 py-2">
-                      <div className="text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        Нээсэн
-                      </div>
-                      <div className="font-medium tabular mt-0.5">{cashSession.openedAt}</div>
-                    </div>
-                    <div className="rounded-lg bg-muted/40 px-2.5 py-2">
-                      <div className="text-muted-foreground flex items-center gap-1">
-                        <Banknote className="h-3 w-3" />
-                        Эхлэх
-                      </div>
-                      <div className="font-bold text-primary tabular mt-0.5">{toMoney(cashSession.openingAmount)}</div>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="pill pill-warn">
-                    <Lock className="h-3 w-3" />
-                    Касс хаалттай
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="p-2 space-y-1">
-              <button
-                onClick={() => router.push("/cash")}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm hover:bg-muted text-foreground transition-colors text-left"
-              >
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  {cashSession ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
-                </div>
-                <span className="flex-1 font-medium">{cashSession ? "Касс хаах" : "Касс нээх"}</span>
-                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-              </button>
-
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm hover:bg-destructive/10 text-foreground hover:text-destructive transition-colors text-left"
-              >
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
-                  <LogOut className="h-3.5 w-3.5" />
-                </div>
-                <span className="flex-1 font-medium">Системээс гарах</span>
-                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-              </button>
-            </div>
-          </PopoverContent>
-        </Popover>
-      </aside>
-
       {/* ═══════════════ Main column ═══════════════ */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="border-b border-border/60 bg-card/85 backdrop-blur-xl">
-          <div className="flex items-center justify-between px-5 py-3">
-            <div className="min-w-0 flex items-center gap-3">
-              <div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>POS</span>
-                  <ChevronRight className="h-3 w-3" />
-                  <span className="text-foreground font-medium">
-                    {showJetonsPanel ? "Жетон" : showBillsPanel ? "Тооцооны хуудас" : showMenuPanel ? (currentTableName || "Цэс") : "Ширээ"}
-                  </span>
-                </div>
-                <h1 className="text-xl font-bold tracking-tight leading-tight mt-0.5">
-                  {showJetonsPanel ? "Жетоны бүртгэл" :
-                   showBillsPanel ? "Бүх тооцоо" :
-                   showMenuPanel ? (isTableBill ? `${currentTableName} — Захиалга` : "Хурдан захиалга") :
-                   "Ширээ удирдлага"}
-                </h1>
-              </div>
+        <header className={`bg-card/85 backdrop-blur-xl ${showJetonsPanel ? "" : "border-b border-border/60"}`}>
+          {showBillsPanel && (
+            <div className="flex items-center justify-between gap-4 px-5 py-3">
+              <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                Тооцооны хуудас
+              </h1>
             </div>
-
-            <div className="flex items-center gap-2">
-              <div className="hidden md:flex items-center gap-2 mr-3">
-                <KpiBadge label="Өнөөдөр" value={toMoney(kpis.revenue)} icon={<ReceiptText className="h-3.5 w-3.5" />} accent="primary" />
-                <KpiBadge label="Гүйлгээ" value={`${kpis.count}`} icon={<Sparkles className="h-3.5 w-3.5" />} accent="emerald" />
-                <KpiBadge label="Ширээ" value={`${kpis.occupied}/${kpis.totalTables}`} icon={<Users className="h-3.5 w-3.5" />} accent="amber" />
-              </div>
-
-              <div className="hidden sm:flex items-center gap-2 px-3 h-9 rounded-xl bg-muted/40 border border-border/60 text-sm tabular">
-                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                {timeStr}
-              </div>
-
-              <button
-                title="Тохиргоо"
-                onClick={() => router.push("/sync")}
-                className="h-9 w-9 rounded-xl border border-border/60 bg-card hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
-              >
-                <Settings className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
+          )}
 
           {showMenuPanel && (
-            <div className="px-5 pb-3 space-y-2.5">
+            <div className="px-5 py-3 space-y-3">
               <div className="flex gap-2">
                 {isTableBill && (
                   <button
                     onClick={handleBackToTables}
-                    className="h-10 px-3 rounded-xl border border-border/60 bg-card hover:bg-muted text-sm font-medium flex items-center gap-1.5 transition-colors"
+                    className="h-9 px-3 rounded-lg bg-muted hover:bg-muted/70 text-foreground text-sm font-medium flex items-center gap-1.5 transition-colors"
                   >
                     <ArrowLeft className="h-4 w-4" />
                     Ширээ
                   </button>
                 )}
                 {isTableBill && (
-                  <div className="flex items-center gap-2 rounded-xl bg-primary/10 border border-primary/20 px-3 h-10">
+                  <div className="flex items-center gap-2 rounded-lg bg-primary/10 px-3 h-9">
                     <Users className="h-4 w-4 text-primary" />
                     <span className="text-sm font-semibold text-primary">{currentTableName}</span>
                   </div>
@@ -286,27 +103,25 @@ export default function PosSalePage() {
                     placeholder="Цэс хайх..."
                     value={searchMenu}
                     onChange={(e) => setSearchMenu(e.target.value)}
-                    className="pl-10 h-10 rounded-xl"
+                    className="pl-10 h-9 rounded-lg"
                   />
                 </div>
               </div>
 
-              <div className="flex gap-2.5 overflow-x-auto py-1.5 px-0.5 slim-scroll">
+              <div className="flex gap-2 overflow-x-auto auto-scroll">
                 <MenuCategoryTile
                   active={selectedGroupSid === null}
                   onClick={() => setSelectedGroupSid(null)}
                   label="Бүгд"
                   icon={<LayoutGrid className="h-[18px] w-[18px]" />}
-                  count={filteredMenus.length}
                 />
-                {syncData.menuGroups.map((group: any, i: number) => (
+                {syncData.menuGroups.map((group: any) => (
                   <MenuCategoryTile
                     key={group.sid}
                     active={selectedGroupSid === group.sid}
                     onClick={() => setSelectedGroupSid(group.sid)}
                     label={group.name}
                     icon={group.iconName ? <LucideIcon name={group.iconName} className="h-[18px] w-[18px]" /> : <Coins className="h-[18px] w-[18px]" />}
-                    accentIndex={i}
                   />
                 ))}
               </div>
@@ -314,111 +129,113 @@ export default function PosSalePage() {
           )}
 
           {saleMode === "tables" && !isTableBill && (
-            <div className="px-5 pt-1 pb-4">
-              <div className="flex gap-2.5 overflow-x-auto py-1.5 px-0.5 slim-scroll">
-                {syncData.rooms.map((room: any) => {
-                  const tablesHere = (syncData.tables as any[]).filter((t: any) => t.roomSid === room.sid)
-                  const occupiedHere = tablesHere.filter((t: any) => !!getTableBill(t.sid)).length
-                  return (
-                    <RoomTile
-                      key={room.sid}
-                      active={selectedRoomSid === room.sid}
-                      onClick={() => setSelectedRoomSid(room.sid)}
-                      name={room.name}
-                      occupied={occupiedHere}
-                      total={tablesHere.length}
-                    />
-                  )
-                })}
-              </div>
+            <div className="flex gap-2 overflow-x-auto px-5 py-4 auto-scroll">
+              {syncData.rooms.map((room: any) => {
+                const tablesHere = (syncData.tables as any[]).filter((t: any) => t.roomSid === room.sid)
+                const occupiedHere = tablesHere.filter((t: any) => !!getTableBill(t.sid)).length
+                return (
+                  <RoomTile
+                    key={room.sid}
+                    active={selectedRoomSid === room.sid}
+                    onClick={() => setSelectedRoomSid(room.sid)}
+                    name={room.name}
+                    occupied={occupiedHere}
+                    total={tablesHere.length}
+                  />
+                )
+              })}
             </div>
           )}
 
           {showBillsPanel && (
-            <div className="px-5 pb-3 space-y-2.5">
-              <div className="relative">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Тооцоо хайх..."
-                  value={searchBills}
-                  onChange={(e) => setSearchBills(e.target.value)}
-                  className="pl-10 h-10 rounded-xl"
-                />
-              </div>
-              <div className="flex items-center gap-1.5 rounded-xl border border-border/60 bg-muted/30 p-0.5 w-fit">
-                <BillsFilterChip active={billsFilter === "all"} onClick={() => setBillsFilter("all")} label="Бүгд" count={billsCounts.all} />
-                <BillsFilterChip active={billsFilter === "unsent"} onClick={() => setBillsFilter("unsent")} label="Илгээгээгүй" count={billsCounts.unsent} accent="amber" />
-                <BillsFilterChip active={billsFilter === "sent"} onClick={() => setBillsFilter("sent")} label="Илгээсэн" count={billsCounts.sent} accent="emerald" />
+            <div className="px-5 pb-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <DatePicker value={billsDate} onChange={setBillsDate} />
+                <div className="relative w-64">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Тооцоо хайх..."
+                    value={searchBills}
+                    onChange={(e) => setSearchBills(e.target.value)}
+                    className="pl-10 h-9 rounded-lg"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 p-0.5">
+                  <BillsFilterChip active={billsFilter === "all"} onClick={() => setBillsFilter("all")} label="Бүгд" count={billsCounts.all} />
+                  <BillsFilterChip active={billsFilter === "unsent"} onClick={() => setBillsFilter("unsent")} label="Илгээгээгүй" count={billsCounts.unsent} accent="amber" />
+                  <BillsFilterChip active={billsFilter === "sent"} onClick={() => setBillsFilter("sent")} label="Илгээсэн" count={billsCounts.sent} accent="emerald" />
+                </div>
               </div>
             </div>
           )}
         </header>
 
         {/* ═══ Content ═══ */}
-        <div className={`flex-1 min-h-0 ${showJetonsPanel ? "overflow-hidden pt-4 bg-muted/15" : "overflow-y-auto p-5 slim-scroll bg-muted/15"}`}>
+        <div className={`flex-1 min-h-0 bg-muted/15 ${showJetonsPanel ? "overflow-hidden" : showBillsPanel ? "overflow-y-auto auto-scroll" : "overflow-y-auto p-5 slim-scroll"}`}>
           {showJetonsPanel ? (
             <JetonsPanel sale={sale} />
           ) : showMenuPanel ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 content-start">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2.5 content-start">
               {filteredMenus.map((menu: any) => {
                 const inBill = billItems.find(item => item.menuSid === menu.sid && !item.isCancelled)
                 return (
-                  <button
-                    key={menu.sid}
-                    onClick={() => addMenuItem(menu)}
-                    className={`group relative text-left rounded-2xl overflow-hidden bg-card transition-all duration-200 active:scale-[0.97] flex flex-col h-full ${
-                      inBill
-                        ? "ring-2 ring-primary shadow-[0_12px_30px_-10px_color-mix(in_oklch,var(--primary)_50%,transparent)]"
-                        : "ring-1 ring-border/60 hover:ring-primary/40 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_-12px_color-mix(in_oklch,var(--foreground)_18%,transparent)]"
-                    }`}
-                  >
-                    {inBill && (
-                      <div className="absolute top-2.5 right-2.5 z-20 flex h-7 min-w-7 px-2 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold tabular shadow-lg ring-2 ring-card">
-                        ×{inBill.quantity}
-                      </div>
-                    )}
+                  <Tooltip key={menu.sid}>
+                    <TooltipTrigger
+                      render={(props) => (
+                        <button
+                          {...props}
+                          onClick={() => addMenuItem(menu)}
+                          className={`group relative text-left rounded-2xl overflow-hidden flex flex-col h-full transition-colors active:scale-[0.97] ${
+                            inBill
+                              ? "bg-primary/10"
+                              : "bg-muted hover:bg-muted/70"
+                          }`}
+                        >
+                          {inBill && (
+                            <div className="absolute top-2.5 right-2.5 z-20 flex h-6 min-w-6 px-1.5 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold tabular">
+                              ×{inBill.quantity}
+                            </div>
+                          )}
 
-                    <div className="aspect-[4/3] w-full overflow-hidden relative shrink-0">
-                      {menu.imageCode ? (
-                        <img
-                          src={getMenuImageSrc(menu.imageCode) || ''}
-                          alt={menu.name}
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                          loading="lazy"
-                          onError={(e) => {
-                            const img = e.target as HTMLImageElement
-                            img.style.display = 'none'
-                            const sib = img.nextElementSibling as HTMLElement | null
-                            if (sib) sib.style.display = 'flex'
-                          }}
-                        />
-                      ) : null}
-                      <div
-                        className="absolute inset-0 w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/15 via-card to-amber-500/10 px-3"
-                        style={{ display: menu.imageCode ? 'none' : 'flex' }}
-                      >
-                        <span className="text-5xl font-black text-primary/30 leading-none truncate select-none">
-                          {(menu.name || "?").trim().slice(0, 1).toUpperCase()}
-                        </span>
-                      </div>
-                    </div>
+                          <div className="aspect-[4/3] w-full overflow-hidden relative shrink-0 bg-background/40">
+                            {menu.imageCode ? (
+                              <img
+                                src={getMenuImageSrc(menu.imageCode) || ''}
+                                alt={menu.name}
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                                onError={(e) => {
+                                  const img = e.target as HTMLImageElement
+                                  img.style.display = 'none'
+                                  const sib = img.nextElementSibling as HTMLElement | null
+                                  if (sib) sib.style.display = 'flex'
+                                }}
+                              />
+                            ) : null}
+                            <div
+                              className="absolute inset-0 w-full h-full flex items-center justify-center px-3"
+                              style={{ display: menu.imageCode ? 'none' : 'flex' }}
+                            >
+                              <span className="text-5xl font-black text-foreground/15 leading-none truncate select-none">
+                                {(menu.name || "?").trim().slice(0, 1).toUpperCase()}
+                              </span>
+                            </div>
+                          </div>
 
-                    <div className="flex-1 px-3 py-2.5 flex flex-col justify-center gap-1.5">
-                      <div className="font-semibold text-sm leading-snug line-clamp-2">{menu.name}</div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-base font-bold tabular text-primary leading-none">
-                          {toMoney(menu.price || 0)}
-                        </span>
-                        <span className={`shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-full text-base font-bold transition-colors ${
-                          inBill
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted/70 text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground"
-                        }`}>
-                          +
-                        </span>
-                      </div>
-                    </div>
-                  </button>
+                          <div className="flex-1 px-3 py-3 flex flex-col gap-1">
+                            {menu.code && (
+                              <div className="text-xs text-muted-foreground tabular truncate">{menu.code}</div>
+                            )}
+                            <div className="font-semibold text-sm leading-tight truncate">{menu.name}</div>
+                            <div className="mt-auto text-right text-base font-bold tabular text-primary leading-none">
+                              {toMoney0(menu.price || 0)} ₮
+                            </div>
+                          </div>
+                        </button>
+                      )}
+                    />
+                    <TooltipContent>{menu.name}</TooltipContent>
+                  </Tooltip>
                 )
               })}
               {filteredMenus.length === 0 && (
@@ -431,56 +248,71 @@ export default function PosSalePage() {
               )}
             </div>
           ) : showBillsPanel ? (
-            <div className="space-y-2 content-start">
-              {filteredBills.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/80 mb-3">
-                    <FileText className="h-7 w-7 opacity-40" />
-                  </div>
-                  <p className="text-sm">Тооцоо олдсонгүй</p>
+            filteredBills.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/80 mb-3">
+                  <FileText className="h-7 w-7 opacity-40" />
                 </div>
-              ) : (
-                filteredBills.map((bill) => {
-                  const activeItems = bill.items.filter((i: any) => !i.isCancelled)
-                  const itemCount = activeItems.reduce((sum: number, i: any) => sum + (i.quantity || 1), 0)
-                  return (
-                    <button
-                      key={bill.id}
-                      onClick={() => setOpenBillDetail(bill)}
-                      className="surface-1 hover:shadow-md hover:border-primary/40 transition-all p-4 w-full text-left"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-                          bill.uploaded ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"
-                        }`}>
-                          <ReceiptText className="h-5 w-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-base font-bold tabular">{toMoney(bill.total)}</span>
-                            <span className="text-sm text-muted-foreground">·</span>
-                            <span className="text-sm text-muted-foreground">{itemCount} зүйл</span>
-                            {bill.uploaded ? (
-                              <span className="pill pill-success">Илгээсэн</span>
-                            ) : (
-                              <span className="pill pill-warn">Илгээгээгүй</span>
-                            )}
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-1.5 truncate">
-                            {activeItems.map((i: any) => i.name).join(", ")}
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
-                            <Clock className="h-3 w-3" />
-                            {new Date(bill.createdAt).toLocaleString("mn-MN")}
-                          </div>
-                        </div>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
-                      </div>
-                    </button>
-                  )
-                })
-              )}
-            </div>
+                <p className="text-sm">Тооцоо олдсонгүй</p>
+              </div>
+            ) : (
+              <table className="w-full text-sm bg-card">
+                <thead className="sticky top-0 bg-muted/60 backdrop-blur z-10">
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="px-4 py-2.5 text-left font-medium w-12">#</th>
+                    <th className="px-3 py-2.5 text-left font-medium w-44">Огноо, цаг</th>
+                    <th className="px-3 py-2.5 text-left font-medium">Бичиг №</th>
+                    <th className="px-3 py-2.5 text-left font-medium w-32">Заал</th>
+                    <th className="px-3 py-2.5 text-left font-medium w-32">Ширээ</th>
+                    <th className="px-3 py-2.5 text-right font-medium w-32">Дүн</th>
+                    <th className="px-3 py-2.5 text-right font-medium w-16">Зүйл</th>
+                    <th className="px-3 py-2.5 text-left font-medium w-32">Статус</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredBills.map((bill, idx) => {
+                    const activeItems = bill.items.filter((i: any) => !i.isCancelled)
+                    const itemCount = activeItems.reduce((sum: number, i: any) => sum + (i.quantity || 1), 0)
+                    const table = bill.tableSid ? tablesMap.get(bill.tableSid) : null
+                    const room = table?.roomSid ? roomsMap.get(table.roomSid) : null
+                    return (
+                      <tr
+                        key={bill.id}
+                        onClick={() => setOpenBillDetail(bill)}
+                        className="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer transition-colors"
+                      >
+                        <td className="px-4 py-2.5 text-muted-foreground tabular">{idx + 1}</td>
+                        <td className="px-3 py-2.5 tabular text-foreground/80">
+                          {datetimeToStr(bill.createdAt)}
+                        </td>
+                        <td className="px-3 py-2.5 tabular text-foreground/80 truncate">
+                          {bill.id}
+                        </td>
+                        <td className="px-3 py-2.5 text-foreground/80 truncate">
+                          {room?.name || "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-foreground/80 truncate">
+                          {table?.name || (bill.tableSid ? "—" : "Шууд")}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-bold tabular">
+                          {toMoney(bill.total)}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular text-muted-foreground">
+                          {itemCount}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {bill.uploaded ? (
+                            <span className="pill pill-success">Илгээсэн</span>
+                          ) : (
+                            <span className="pill pill-warn">Илгээгээгүй</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3 content-start">
               {filteredTables.map((table: any) => {
@@ -495,45 +327,21 @@ export default function PosSalePage() {
                   <button
                     key={table.sid}
                     onClick={() => handleTableClick(table)}
-                    className={`group relative aspect-square rounded-2xl overflow-hidden transition-all active:scale-[0.96] flex flex-col bg-card ${
-                      isOccupied
-                        ? "ring-2 ring-primary/70 shadow-[0_10px_28px_-14px_color-mix(in_oklch,var(--primary)_60%,transparent)]"
-                        : "border border-border/60 hover:border-primary/40 hover:shadow-[0_8px_20px_-12px_color-mix(in_oklch,var(--foreground)_15%,transparent)]"
-                    }`}
+                    className="relative aspect-square rounded-2xl px-3 py-3 flex items-center justify-center transition-colors active:scale-[0.97] bg-muted text-foreground hover:bg-muted/70"
                   >
-                    <div className={`h-1.5 w-full ${
-                      isOccupied
-                        ? "bg-gradient-to-r from-primary via-primary to-primary/70"
-                        : "bg-gradient-to-r from-emerald-500/70 via-emerald-500/40 to-emerald-500/10"
-                    }`} />
                     {isOccupied && (
-                      <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.06] via-transparent to-transparent pointer-events-none" />
-                    )}
-
-                    <div className="relative px-2.5 pt-2 flex items-center justify-between">
-                      <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ${
-                        isOccupied ? "text-primary" : "text-emerald-600"
-                      }`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${
-                          isOccupied ? "bg-primary animate-pulse" : "bg-emerald-500"
-                        }`} />
-                        {isOccupied ? "Захиалгатай" : "Чөлөөтэй"}
-                      </span>
-                    </div>
-
-                    <div className="relative flex-1 flex items-center justify-center px-2 min-h-0">
-                      <div className={`font-bold tracking-tight text-center leading-none line-clamp-2 break-words text-foreground ${nameSizeClass}`}>
-                        {table.name}
+                      <div className="absolute top-2.5 left-2.5 flex items-center justify-center h-6 w-6 rounded-full bg-primary/15 text-primary">
+                        <Users className="h-3.5 w-3.5" />
                       </div>
+                    )}
+                    <div className={`font-bold tracking-tight text-center leading-none line-clamp-2 break-words ${nameSizeClass}`}>
+                      {table.name}
                     </div>
-
-                    <div className="relative px-2.5 pb-2 min-h-[24px] flex items-center justify-center">
-                      {isOccupied ? (
-                        <div className="text-sm font-bold tabular text-primary leading-none truncate w-full text-center">
-                          {toMoney(bill.totalAmount)}
-                        </div>
-                      ) : null}
-                    </div>
+                    {isOccupied && (
+                      <div className="absolute bottom-2.5 right-2.5 text-sm font-semibold tabular leading-none text-primary">
+                        {toMoney0(bill.totalAmount)} ₮
+                      </div>
+                    )}
                   </button>
                 )
               })}
@@ -542,7 +350,7 @@ export default function PosSalePage() {
         </div>
       </div>
 
-      <BillPanel sale={sale} />
+      {!showBillsPanel && !showJetonsPanel && <BillPanel sale={sale} />}
 
       <PaymentDialog sale={sale} />
       <PrintPreviewDialog sale={sale} />
@@ -576,53 +384,31 @@ function KpiBadge({
   )
 }
 
-const ACCENTS = [
-  { bg: "bg-violet-500/10", text: "text-violet-600", ring: "ring-violet-500/30", grad: "from-violet-500/15 to-violet-500/0" },
-  { bg: "bg-emerald-500/10", text: "text-emerald-600", ring: "ring-emerald-500/30", grad: "from-emerald-500/15 to-emerald-500/0" },
-  { bg: "bg-amber-500/10", text: "text-amber-600", ring: "ring-amber-500/30", grad: "from-amber-500/15 to-amber-500/0" },
-  { bg: "bg-sky-500/10", text: "text-sky-600", ring: "ring-sky-500/30", grad: "from-sky-500/15 to-sky-500/0" },
-  { bg: "bg-rose-500/10", text: "text-rose-600", ring: "ring-rose-500/30", grad: "from-rose-500/15 to-rose-500/0" },
-  { bg: "bg-orange-500/10", text: "text-orange-600", ring: "ring-orange-500/30", grad: "from-orange-500/15 to-orange-500/0" },
-  { bg: "bg-cyan-500/10", text: "text-cyan-600", ring: "ring-cyan-500/30", grad: "from-cyan-500/15 to-cyan-500/0" },
-  { bg: "bg-indigo-500/10", text: "text-indigo-600", ring: "ring-indigo-500/30", grad: "from-indigo-500/15 to-indigo-500/0" },
-  { bg: "bg-pink-500/10", text: "text-pink-600", ring: "ring-pink-500/30", grad: "from-pink-500/15 to-pink-500/0" },
-]
-
 function MenuCategoryTile({
-  active, onClick, label, icon, count, accentIndex = -1,
+  active, onClick, label, icon, count,
 }: {
   active: boolean
   onClick: () => void
   label: string
   icon: React.ReactNode
   count?: number
-  accentIndex?: number
 }) {
-  const acc = accentIndex >= 0 ? ACCENTS[accentIndex % ACCENTS.length] : null
   return (
     <button
       onClick={onClick}
-      className={`group shrink-0 relative h-11 rounded-xl flex items-center gap-2 pl-2 pr-3 transition-all overflow-hidden border ${
+      className={`shrink-0 h-16 min-w-16 max-w-[120px] px-3 py-1 rounded-xl text-sm font-medium flex flex-col items-center justify-center gap-1 transition-colors ${
         active
-          ? `bg-card border-primary/60 ring-2 ring-primary/25 shadow-[0_4px_12px_-6px_color-mix(in_oklch,var(--foreground)_18%,transparent)]`
-          : "bg-card border-border/60 hover:border-border hover:bg-muted/40"
+          ? "bg-primary text-primary-foreground"
+          : "bg-muted text-foreground hover:bg-muted/70"
       }`}
     >
-      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
-        active
-          ? `${acc?.bg ?? "bg-primary/15"} ${acc?.text ?? "text-primary"}`
-          : "bg-muted text-muted-foreground group-hover:bg-muted/70"
-      }`}>
-        <span className="[&>svg]:h-[15px] [&>svg]:w-[15px]">{icon}</span>
-      </div>
-      <div className="text-left min-w-0 flex items-baseline gap-1.5">
-        <span className={`text-sm font-semibold truncate max-w-[140px] ${active ? "text-foreground" : "text-foreground/85"}`}>
-          {label}
+      <span className="[&>svg]:h-5 [&>svg]:w-5">{icon}</span>
+      <span className="truncate max-w-full text-xs leading-tight">{label}</span>
+      {count !== undefined && (
+        <span className={`tabular text-[10px] ${active ? "text-primary-foreground/75" : "text-muted-foreground"}`}>
+          {count}
         </span>
-        {count !== undefined && (
-          <span className="text-xs text-muted-foreground tabular">{count}</span>
-        )}
-      </div>
+      )}
     </button>
   )
 }
@@ -636,36 +422,19 @@ function RoomTile({
   occupied: number
   total: number
 }) {
-  const ratio = total > 0 ? occupied / total : 0
   return (
     <button
       onClick={onClick}
-      className={`group shrink-0 relative h-[72px] min-w-[150px] rounded-2xl px-4 pt-3 pb-2.5 flex flex-col justify-between transition-all overflow-hidden bg-card border ${
-        active ? "border-primary/60 ring-2 ring-primary/30" : "border-border/60 hover:border-border hover:bg-muted/40"
+      className={`shrink-0 h-12 px-4 rounded-lg text-sm font-medium flex items-center gap-2.5 transition-colors ${
+        active
+          ? "bg-primary text-primary-foreground"
+          : "bg-muted text-foreground hover:bg-muted/70"
       }`}
     >
-      <div className="flex items-center gap-2">
-        <span className={`h-2 w-2 rounded-full ${
-          ratio >= 0.8 ? "bg-rose-500" : ratio >= 0.4 ? "bg-amber-500" : "bg-emerald-500"
-        }`} />
-        <span className="text-sm font-semibold truncate text-foreground/90">
-          {name}
-        </span>
-      </div>
-      <div className="flex items-end justify-between gap-2">
-        <div className="flex items-baseline gap-1 tabular">
-          <span className="text-base font-bold leading-none text-foreground">{occupied}</span>
-          <span className="text-xs text-muted-foreground">/ {total} ширээ</span>
-        </div>
-        <div className="flex gap-0.5">
-          {Array.from({ length: Math.min(total, 5) }).map((_, i) => (
-            <span
-              key={i}
-              className={`h-1 w-1.5 rounded-sm ${i < occupied ? "bg-foreground/50" : "bg-muted"}`}
-            />
-          ))}
-        </div>
-      </div>
+      <span className="truncate">{name}</span>
+      <span className={`tabular text-xs ${active ? "text-primary-foreground/75" : "text-muted-foreground"}`}>
+        {occupied}/{total}
+      </span>
     </button>
   )
 }
@@ -681,11 +450,11 @@ function BillsFilterChip({
 }) {
   const accentClasses =
     active && accent === "amber"
-      ? "bg-amber-500 text-white shadow-[0_4px_12px_-4px_color-mix(in_oklch,#f59e0b_50%,transparent)]"
+      ? "bg-amber-500 text-white"
       : active && accent === "emerald"
-        ? "bg-emerald-500 text-white shadow-[0_4px_12px_-4px_color-mix(in_oklch,#10b981_50%,transparent)]"
+        ? "bg-emerald-500 text-white"
         : active
-          ? "bg-foreground text-background shadow-[0_4px_12px_-4px_color-mix(in_oklch,var(--foreground)_30%,transparent)]"
+          ? "bg-foreground text-background"
           : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
   const countClass =
     active

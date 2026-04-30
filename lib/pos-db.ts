@@ -244,6 +244,23 @@ async function createTables() {
   await database.execute('CREATE INDEX IF NOT EXISTS idx_pending_sales_uploaded ON pending_sales(uploaded)')
   await database.execute('CREATE INDEX IF NOT EXISTS idx_open_bills_table ON open_bills(table_sid)')
   await database.execute('CREATE INDEX IF NOT EXISTS idx_open_bills_paid ON open_bills(is_paid)')
+
+  // Migration: pending_sales-д нэмэлт багана нэмэх (хуучин DB-тэй ч ажиллуулна)
+  for (const ddl of [
+    "ALTER TABLE pending_sales ADD COLUMN chips_json TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE pending_sales ADD COLUMN payments_json TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE pending_sales ADD COLUMN closed_at TEXT",
+    "ALTER TABLE pending_sales ADD COLUMN table_sid TEXT",
+    "ALTER TABLE pending_sales ADD COLUMN table_dinner_sid TEXT",
+    "ALTER TABLE pending_sales ADD COLUMN cashier_sid TEXT",
+    "ALTER TABLE pending_sales ADD COLUMN is_deleted INTEGER DEFAULT 0",
+    "ALTER TABLE pending_sales ADD COLUMN doc_date TEXT",
+    "ALTER TABLE device ADD COLUMN store_phone TEXT",
+    "ALTER TABLE device ADD COLUMN store_address TEXT",
+    "ALTER TABLE device ADD COLUMN doc_date TEXT",
+  ]) {
+    try { await database.execute(ddl) } catch { /* column exists */ }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -257,12 +274,21 @@ export async function saveDevice(data: {
   deviceName: string
   storeId: number
   storeName: string
+  storePhone?: string | null
+  storeAddress?: string | null
+  docDate?: string | null
 }) {
   const database = await getDb()
   await database.execute(
-    `INSERT OR REPLACE INTO device (id, device_id, pos_token, device_code, device_name, store_id, store_name, updated_at)
-     VALUES (1, $1, $2, $3, $4, $5, $6, datetime('now'))`,
-    [data.deviceId, data.posToken, data.deviceCode, data.deviceName, data.storeId, data.storeName]
+    `INSERT OR REPLACE INTO device (
+       id, device_id, pos_token, device_code, device_name,
+       store_id, store_name, store_phone, store_address, doc_date, updated_at
+     ) VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, datetime('now'))`,
+    [
+      data.deviceId, data.posToken, data.deviceCode, data.deviceName,
+      data.storeId, data.storeName,
+      data.storePhone ?? null, data.storeAddress ?? null, data.docDate ?? null,
+    ]
   )
 }
 
@@ -270,6 +296,14 @@ export async function getDevice(): Promise<any | null> {
   const database = await getDb()
   const result = await database.select<any[]>('SELECT * FROM device WHERE id = 1')
   return result.length > 0 ? result[0] : null
+}
+
+export async function updateDeviceDocDate(docDate: string) {
+  const database = await getDb()
+  await database.execute(
+    "UPDATE device SET doc_date = $1, updated_at = datetime('now') WHERE id = 1",
+    [docDate]
+  )
 }
 
 export async function clearDevice() {
@@ -428,7 +462,14 @@ export async function getMenus(): Promise<any[]> {
 
 export async function getMenuGroups(): Promise<any[]> {
   const database = await getDb()
-  return await database.select('SELECT * FROM menu_groups WHERE is_active = 1 ORDER BY name')
+  const rows = await database.select<any[]>('SELECT * FROM menu_groups WHERE is_active = 1 ORDER BY name')
+  return rows.map((r) => ({
+    sid: r.sid,
+    code: r.code,
+    name: r.name,
+    iconName: r.icon_name,
+    isActive: r.is_active,
+  }))
 }
 
 export async function getMenuPrices(): Promise<any[]> {
@@ -502,6 +543,11 @@ export async function getPosUserByCode(code: string): Promise<any | null> {
   return result.length > 0 ? result[0] : null
 }
 
+export async function updatePosUserPassword(sid: string, newPassword: string) {
+  const database = await getDb()
+  await database.execute('UPDATE pos_users SET password = $1 WHERE sid = $2', [newPassword, sid])
+}
+
 // ═══════════════════════════════════════════════════════════
 // PENDING SALES операцууд
 // ═══════════════════════════════════════════════════════════
@@ -509,13 +555,37 @@ export async function getPosUserByCode(code: string): Promise<any | null> {
 export async function addPendingSale(sale: {
   id: string
   createdAt: string
+  closedAt?: string | null
+  docDate?: string | null
   total: number
   items: any[]
+  chips?: any[]
+  payments?: any[]
+  tableSid?: string | null
+  tableDinnerSid?: string | null
+  cashierSid?: string
+  isDeleted?: boolean
 }) {
   const database = await getDb()
   await database.execute(
-    'INSERT INTO pending_sales (id, created_at, total, items_json, uploaded) VALUES ($1, $2, $3, $4, 0)',
-    [sale.id, sale.createdAt, sale.total, JSON.stringify(sale.items)]
+    `INSERT INTO pending_sales (
+      id, created_at, closed_at, doc_date, total, items_json, chips_json, payments_json,
+      table_sid, table_dinner_sid, cashier_sid, is_deleted, uploaded
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0)`,
+    [
+      sale.id,
+      sale.createdAt,
+      sale.closedAt ?? null,
+      sale.docDate ?? null,
+      sale.total,
+      JSON.stringify(sale.items || []),
+      JSON.stringify(sale.chips || []),
+      JSON.stringify(sale.payments || []),
+      sale.tableSid ?? null,
+      sale.tableDinnerSid ?? null,
+      sale.cashierSid ?? null,
+      sale.isDeleted ? 1 : 0,
+    ]
   )
 }
 
@@ -526,8 +596,16 @@ export async function getPendingSales(): Promise<any[]> {
   return rows.map(row => ({
     id: row.id,
     createdAt: row.created_at,
+    closedAt: row.closed_at ?? row.created_at,
+    docDate: row.doc_date ?? null,
     total: row.total,
-    items: JSON.parse(row.items_json),
+    items: JSON.parse(row.items_json || '[]'),
+    chips: JSON.parse(row.chips_json || '[]'),
+    payments: JSON.parse(row.payments_json || '[]'),
+    tableSid: row.table_sid ?? null,
+    tableDinnerSid: row.table_dinner_sid ?? null,
+    cashierSid: row.cashier_sid ?? '',
+    isDeleted: row.is_deleted === 1,
     uploaded: row.uploaded === 1,
   }))
 }

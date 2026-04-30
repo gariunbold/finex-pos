@@ -265,6 +265,7 @@ export interface PendingSale {
   id: string
   createdAt: string
   closedAt: string
+  docDate?: string  // yyyy.MM.dd — POS-н "ажиллаж буй өдөр". addPendingSale автомат оноож хадгална
   tableSid: string | null
   tableDinnerSid: string | null
   cashierSid: string
@@ -284,6 +285,9 @@ interface PosState {
   deviceName: string | null
   storeId: number | null
   storeName: string | null
+  storePhone: string | null
+  storeAddress: string | null
+  docDate: string | null  // yyyy.MM.dd — POS ажиллаж буй өдөр
   posUser: any | null
   cashSession: CashSession | null
   syncData: SyncData
@@ -303,6 +307,7 @@ interface PosState {
   syncFromServer: () => Promise<boolean>
   addPendingSale: (sale: PendingSale) => void
   uploadPendingSales: () => Promise<boolean>
+  startNewDay: (newDocDate: string) => { ok: boolean; reason?: string }
 
   // Open bills (ширээн дээрх нээлттэй тооцоо)
   saveOpenBill: (bill: LocalBill) => void
@@ -319,6 +324,9 @@ export const usePosStore = create<PosState>((set, get) => ({
   deviceName: null,
   storeId: null,
   storeName: null,
+  storePhone: null,
+  storeAddress: null,
+  docDate: null,
   posUser: null,
   cashSession: null,
   syncData: {
@@ -353,6 +361,9 @@ export const usePosStore = create<PosState>((set, get) => ({
           deviceName: data.deviceName || null,
           storeId: data.storeId || null,
           storeName: data.storeName || null,
+          storePhone: data.storePhone ?? null,
+          storeAddress: data.storeAddress ?? null,
+          docDate: data.docDate ?? null,
           posUser: current.posUser || data.posUser || null,
           cashSession: current.cashSession || data.cashSession || null,
         })
@@ -404,6 +415,9 @@ export const usePosStore = create<PosState>((set, get) => ({
             deviceName: device.device_name,
             storeId: device.store_id,
             storeName: device.store_name,
+            storePhone: device.store_phone ?? null,
+            storeAddress: device.store_address ?? null,
+            docDate: device.doc_date ?? null,
           })
         }
         
@@ -514,6 +528,11 @@ export const usePosStore = create<PosState>((set, get) => ({
       const d = res.data?.pos ? res.data : res
       if (d.pos) {
         const { pos, store, posUsers } = d
+        const initialDocDate = (() => {
+          const dt = new Date()
+          const pad = (n: number) => (n < 10 ? `0${n}` : String(n))
+          return `${dt.getFullYear()}.${pad(dt.getMonth() + 1)}.${pad(dt.getDate())}`
+        })()
         const session = {
           isPaired: true,
           posToken: pos.sid,  // pos.sid-г posToken болгон ашиглана
@@ -522,6 +541,9 @@ export const usePosStore = create<PosState>((set, get) => ({
           deviceName: pos.name,
           storeId: pos.storeId,
           storeName: store?.name || pos.storeName,
+          storePhone: store?.phone ?? store?.storePhone ?? null,
+          storeAddress: store?.address ?? store?.storeAddress ?? null,
+          docDate: initialDocDate,
           posUser: null,
           cashSession: null,
         }
@@ -546,6 +568,9 @@ export const usePosStore = create<PosState>((set, get) => ({
               deviceName: pos.name,
               storeId: pos.storeId,
               storeName: store?.name || pos.storeName,
+              storePhone: store?.phone ?? store?.storePhone ?? null,
+              storeAddress: store?.address ?? store?.storeAddress ?? null,
+              docDate: initialDocDate,
             })
             // PosUsers хадгалах (offline login-д ашиглах)
             if (posUsers && posUsers.length > 0) {
@@ -580,6 +605,9 @@ export const usePosStore = create<PosState>((set, get) => ({
       deviceName: null,
       storeId: null,
       storeName: null,
+      storePhone: null,
+      storeAddress: null,
+      docDate: null,
       posUser: null,
       cashSession: null,
       // Бүх локал өгөгдлийг устгана — POS солих үед л
@@ -893,18 +921,47 @@ export const usePosStore = create<PosState>((set, get) => ({
   },
 
   addPendingSale: (sale) => {
-    const pending = [...get().pendingSales, sale]
+    // docDate автомат оноох: caller-аас өгөөгүй бол POS-н одоогийн ажиллаж буй өдрөөр (эсвэл өнөөдрөөр)
+    const fallbackDocDate = (() => {
+      const d = new Date()
+      const pad = (n: number) => (n < 10 ? `0${n}` : String(n))
+      return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`
+    })()
+    const stored: PendingSale = {
+      ...sale,
+      docDate: sale.docDate || get().docDate || fallbackDocDate,
+    }
+    const pending = [...get().pendingSales, stored]
     set({ pendingSales: pending })
-    
+
     // SQLite хадгалах
     if (typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
       import('./pos-db').then(async (db) => {
-        await db.addPendingSale(sale)
+        await db.addPendingSale(stored)
       }).catch(() => {})
     }
-    
+
     // localStorage fallback
     localStorage.setItem('pending-sales', JSON.stringify(pending))
+  },
+
+  startNewDay: (newDocDate) => {
+    const { pendingSales, openBills, deviceId } = get()
+    const unsent = pendingSales.filter((s) => !s.uploaded).length
+    if (unsent > 0) {
+      return { ok: false, reason: `${unsent} борлуулалт серверт илгээгдээгүй байна. Эхлээд "Илгээх" хуудсаар илгээнэ үү.` }
+    }
+    const openUnpaid = openBills.filter((b) => !b.isPaid).length
+    if (openUnpaid > 0) {
+      return { ok: false, reason: `${openUnpaid} ширээн дээр захиалга хаагдаагүй байна.` }
+    }
+    set({ docDate: newDocDate })
+    if (deviceId !== null && typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
+      import('./pos-db').then((db) => db.updateDeviceDocDate(newDocDate)).catch(() => {})
+    }
+    const saved = JSON.parse(localStorage.getItem('session') || '{}')
+    localStorage.setItem('session', JSON.stringify({ ...saved, docDate: newDocDate }))
+    return { ok: true }
   },
 
   uploadPendingSales: async () => {
@@ -912,8 +969,9 @@ export const usePosStore = create<PosState>((set, get) => ({
     const { pendingSales, posToken } = get()
     if (!posToken) return true
 
-    // Зөвхөн илгээгээгүй (мөн устгаагүй) борлуулалтыг шилжүүлнэ — давхар явахаас сэргийлнэ
-    const toUpload = pendingSales.filter((s) => !s.uploaded && !s.isDeleted)
+    // Илгээгээгүй борлуулалт + устгасан тэмдэглэгээтэй бичлэгүүдийг хоёуланг нь сервер рүү
+    // илгээнэ — устгасан бичлэг сервер рүү давхар хүргэгдэхгүй давхар нөхцөлтэй (uploaded=true).
+    const toUpload = pendingSales.filter((s) => !s.uploaded)
     if (toUpload.length === 0) return true
 
     try {
@@ -940,6 +998,7 @@ export const usePosStore = create<PosState>((set, get) => ({
         })),
         payments: s.payments,
         createdAt: s.createdAt,
+        docDate: s.docDate || null,
         isDeleted: !!s.isDeleted,
       }))
 

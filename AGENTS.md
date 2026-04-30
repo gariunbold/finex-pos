@@ -35,6 +35,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Unused import, variable үлдээхгүй
 - Console.log debug-д ашиглаад устгана, commit-д орохгүй
 
+### 1.4 Огнооны формат — `yyyy.MM.dd`
+- **Бүх огноо** UI-д **`yyyy.MM.dd`** форматтай харагдана (жишээ: `2026.04.29`)
+- Datetime: **`yyyy.MM.dd HH:mm:ss`**
+- `lib/format.ts` доторх функцуудыг ашиглана: `dateToStr(date)`, `datetimeToStr(date)`, `today()`, `strToDate(str)`
+- HTML `<input type="date">` (ISO `yyyy-MM-dd` форматтай) **хэрэглэхгүй** — Mongolian locale-д тохирохгүй
+- Огноо сонгох UI-д `components/ui/date-picker.tsx` (DatePicker) ашиглана — `yyyy.MM.dd` форматаар харуулж буцаана
+- State-д огноог `yyyy.MM.dd` string-ээр хадгална. Backend-тэй ярилцахдаа шаардлагатай бол converter-аар шилжүүлнэ
+
 ---
 
 ## 2. SSR хэрэглэхгүй
@@ -189,7 +197,8 @@ POST /common/{option}                  → { items: [{ value, label }] }
 - `variant="ghost"` (background-гүй, border-гүй, цул бус) button **хэрэглэхгүй**
 - Цуцлах/Хаах товчлуурт `variant="outline"` ашиглана
 - Гол үйлдлийн товч (Хадгалах, Үүсгэх) `variant="default"` ашиглана
-- Confirm dialog-д гол товч (Тийм) **зүүн талд**, цуцлах товч (Үгүй) **баруун талд** байна
+- Dialog footer-д **гол үйлдлийн товч (Тийм / Хадгалах / Төлөх / Хэвлэх г.м.) зүүн талд**, **хаах төрлийн товч (Хаах / Болих / Гарах) баруун талд** байна
+- Хаах товчны текст үргэлж "**Хаах**" (Цуцлах / Close хэрэглэхгүй). Icon: `X`. Гол үйлдлийн товчны icon нь үйлдлийн утгад тохирно (Төлөх → `Banknote`, Хэвлэх → `Printer`, Хадгалах → `Save`, г.м.)
 - Input, button, context menu, toolbar search зэрэг бүх UI element-ийн текст `text-sm` (14px) нэгдсэн хэмжээтэй. `text-xs` хэрэглэхгүй
 - `isActive` field: form label → "Төлөв", grid header → "Төлөв", grid template → "Идэвхтэй"/"Идэвхгүй" (Тийм/Үгүй хэрэглэхгүй)
 
@@ -608,3 +617,28 @@ npm run tauri:build    # Production build (Windows/macOS)
 - **localStorage** — Fallback (browser mode), SQLite primary (Tauri mode)
 - **Password-only Login** — Paired device дээр зөвхөн password шаардана
 - **Unpair функц** — Хэрэглэгч төхөөрөмж солих боломжтой
+
+### 13.9 Branch Module — Salbar tus burijn modulijn iдэвхжүүлэлт (MUST)
+
+Backend `BranchModule` entity нь branch тус бүрийн module (бүжигчин, караоке, хүргэлт г.м.) идэвхжилтийг тэмдэглэдэг. POS app нь зөвхөн идэвхтэй module-уудтай холбоотой UI/логикийг харуулна.
+
+**Module flag хүлээн авах**:
+- Activation үед: `/pos/activate` response дотор `pos.isDancerEnabled` нэмэгдэж ирнэ. Frontend `syncData.isDancerEnabled` болгон хадгална.
+- Sync үед: `/pos/syncDownload` response дотор `pos.isDancerEnabled` бас бэрхшээлгүй ирэх ёстой.
+- Backend нь `BranchModule.isEnabled(branch, Common.MODULE_DANCER)` шалгалт хийж response дээр оруулдаг.
+
+**POS app дотор хэрэглэлт**:
+- `usePosStore.syncData.isDancerEnabled` (0/1) — boolean flag
+- App header NAV: Жетон menu зөвхөн `isDancerEnabled === 1` үед `JETON_NAV` нэмэгдэнэ (`app-header.tsx`)
+- Sale page жетон mode зөвхөн dancer module идэвхтэй үед
+
+**SQLite-д хадгалалт**:
+- `dancers` массив болон `isDancerEnabled` flag нь SQLite-д ХАДГАЛАГДАХГҮЙ — зөвхөн localStorage `sync-data` key
+- Restore үед SQLite-аас sync data ачаалаад dancers/isDancerEnabled-ийг hold хийдэг (`set((s) => ({ syncData: { ..., dancers: s.syncData.dancers, isDancerEnabled: s.syncData.isDancerEnabled } }))`)
+
+**Шинэ module нэмэх алхам** (POS-д):
+1. Backend Activation/Sync response-д `pos.isXxxEnabled` flag нэмэх
+2. `SyncData` interface-д `isXxxEnabled: number` нэмэх
+3. `activateDevice`/`syncFromServer` дотор `isXxxEnabled: Number(pos.isXxxEnabled) === 1 ? 1 : 0` оруулах
+4. `restorePosSession` дотор localStorage уншихад flag-ыг hold хийх
+5. Module-аас хамаарах UI-уудыг conditional render хийх

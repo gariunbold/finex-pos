@@ -221,7 +221,10 @@ export function BillDetailDialog({ sale, bill, onClose }: BillDetailDialogProps)
               <Printer className="h-4 w-4 mr-1.5" />
               Хэвлэх
             </Button>
-            <Button variant="outline" onClick={onClose}>Хаах</Button>
+            <Button variant="outline" onClick={onClose}>
+              <X className="h-4 w-4" />
+              Хаах
+            </Button>
           </div>
         </div>
       </DialogContent>

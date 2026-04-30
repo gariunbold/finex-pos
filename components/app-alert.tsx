@@ -104,7 +104,7 @@ export function AppAlert() {
       {/* Loading overlay */}
       {loadingOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center">
-          <div className="flex items-center gap-3 rounded-xl bg-card px-6 py-4 shadow-xl border border-border">
+          <div className="flex items-center gap-3 rounded-xl bg-card px-6 py-4 border border-border">
             <Loader2 size={20} className="animate-spin text-primary" />
             <span className="text-sm text-foreground">
               {loadingMessage || "Уншиж байна..."}

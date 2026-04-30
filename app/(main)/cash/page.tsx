@@ -193,7 +193,7 @@ export default function PosCashPage() {
                   <button
                     onClick={handleCloseCash}
                     disabled={!amountNum}
-                    className="sheen group flex-1 h-14 rounded-2xl bg-destructive text-white font-semibold text-base flex items-center justify-center gap-2 shadow-[0_10px_30px_-10px_color-mix(in_oklch,var(--destructive)_60%,transparent)] hover:brightness-110 active:translate-y-px transition-all disabled:opacity-40"
+                    className="sheen group flex-1 h-14 rounded-2xl bg-destructive text-white font-semibold text-base flex items-center justify-center gap-2 hover:brightness-110 active:translate-y-px transition-all disabled:opacity-40"
                   >
                     <Lock className="h-[18px] w-[18px]" />
                     Касс хаах
@@ -211,7 +211,7 @@ export default function PosCashPage() {
                 <button
                   onClick={handleOpenCash}
                   disabled={!amountNum && amount !== "0"}
-                  className="sheen group flex-1 h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base flex items-center justify-center gap-2 shadow-[0_10px_30px_-10px_color-mix(in_oklch,var(--primary)_60%,transparent)] hover:brightness-110 active:translate-y-px transition-all disabled:opacity-40"
+                  className="sheen group flex-1 h-14 rounded-2xl bg-primary text-primary-foreground font-semibold text-base flex items-center justify-center gap-2 hover:brightness-110 active:translate-y-px transition-all disabled:opacity-40"
                 >
                   <LockOpen className="h-[18px] w-[18px]" />
                   Касс нээх

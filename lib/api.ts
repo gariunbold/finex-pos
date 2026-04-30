@@ -3,8 +3,11 @@ import type { AxiosRequestConfig } from 'axios'
 import { useAlertStore } from './store'
 
 // ── Base URL ──
-const API_BASE = 'https://finex.app.mn/api'
-//const API_BASE = 'http://localhost:3000/api'
+// Production: nginx /api/* → Grails backend
+// Dev: Grails (port 8080) шууд root-оос service дуудна, /api prefix-гүй
+const API_BASE = process.env.NODE_ENV === 'development'
+  ? 'http://localhost:8080'
+  : 'https://finex.app.mn/api'
 
 // ── Tauri mode шалгах ──
 function isTauri(): boolean {

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { usePosStore, useAlertStore } from "@/lib/store"
 import { toMoney, datetimeToStr } from "@/lib/format"
 import {
-  Upload, CheckCircle2, ArrowLeft, CloudUpload, AlertCircle, Receipt, Clock, TrendingUp,
+  Upload, CheckCircle2, CloudUpload, Receipt, Trash2,
 } from "lucide-react"
 
 export default function PosUploadPage() {
@@ -14,20 +14,22 @@ export default function PosUploadPage() {
   const { alertError, confirm, showLoading, hideLoading, toastSuccess } = useAlertStore()
   const [uploading, setUploading] = useState(false)
 
-  // Зөвхөн илгээгээгүй борлуулалтын жагсаалт
-  const unsentSales = pendingSales.filter((s: any) => !s.uploaded && !s.isDeleted)
+  // Илгээгдээгүй бичлэг (устгасан бичлэгийг ч сервер рүү тэмдэглэхийн тулд илгээнэ)
+  const unsentAll = pendingSales.filter((s: any) => !s.uploaded)
+  const unsentSales = unsentAll.filter((s: any) => !s.isDeleted)
+  const unsentDeleted = unsentAll.filter((s: any) => s.isDeleted)
 
   useEffect(() => {
     if (!isPaired || !posUser) router.replace("/login")
   }, [isPaired, posUser, router])
 
   const handleUpload = async () => {
-    if (unsentSales.length === 0) return alertError("Илгээх борлуулалт байхгүй байна")
+    if (unsentAll.length === 0) return alertError("Илгээх борлуулалт байхгүй байна")
 
-    const confirmed = await confirm(
-      "Өгөгдөл илгээх",
-      `${unsentSales.length} борлуулалтыг server луу илгээх үү?`
-    )
+    const summary = unsentDeleted.length > 0
+      ? `${unsentSales.length} борлуулалт + ${unsentDeleted.length} устгасан бичлэгийг server луу илгээх үү?`
+      : `${unsentSales.length} борлуулалтыг server луу илгээх үү?`
+    const confirmed = await confirm("Өгөгдөл илгээх", summary)
     if (!confirmed) return
 
     setUploading(true)
@@ -44,140 +46,111 @@ export default function PosUploadPage() {
   }
 
   const totalAmount = unsentSales.reduce((sum, sale) => sum + sale.total, 0)
-  const hasPending = unsentSales.length > 0
-  const itemCount = unsentSales.reduce((sum, s) => sum + (s.items?.length || 0), 0)
+  const hasPending = unsentAll.length > 0
 
   return (
-    <div className="surface-page h-full flex flex-col">
-      {/* Top bar */}
-      <header className="relative z-10 flex items-center justify-between px-5 sm:px-8 py-4 border-b border-border/60 bg-card/80 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
+    <div className="h-full flex flex-col bg-card/85 backdrop-blur-xl">
+      {/* Title */}
+      <div className="px-5 py-3">
+        <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
+          <CloudUpload className="h-5 w-5 text-primary" />
+          Өгөгдөл илгээх
+        </h1>
+      </div>
+
+      {/* Toolbar */}
+      <div className="px-5 pb-3 border-b border-border/60">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
-            onClick={() => router.back()}
-            className="h-9 w-9 rounded-xl border border-border/70 bg-card hover:bg-muted flex items-center justify-center transition-colors"
-            title="Буцах"
+            onClick={handleUpload}
+            disabled={uploading || !hasPending}
+            className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium flex items-center gap-2 hover:brightness-110 active:translate-y-px transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <Upload className={`h-4 w-4 ${uploading ? "animate-pulse" : ""}`} />
+            {uploading ? "Илгээж байна..." : "Бүгдийг илгээх"}
           </button>
-          <div className="mono-mark scale-[0.85] origin-left">
-            <CloudUpload className="relative z-10 h-5 w-5" />
-          </div>
-          <div>
-            <div className="text-sm font-bold tracking-tight leading-none">Өгөгдөл илгээх</div>
-            <div className="text-xs text-muted-foreground mt-0.5">Оффлайн борлуулалтыг сервертэй синхрон болгоно</div>
+          {hasPending ? (
+            <span className="pill pill-warn tabular">
+              <Receipt className="h-3.5 w-3.5" />
+              {unsentSales.length} илгээгээгүй
+              {unsentDeleted.length > 0 ? ` · ${unsentDeleted.length} устгасан` : ""}
+            </span>
+          ) : (
+            <span className="pill pill-success">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Бүгд илгээгдсэн
+            </span>
+          )}
+          <div className="ml-auto text-sm text-muted-foreground tabular">
+            Илгээх дүн: <span className="font-semibold text-foreground">{toMoney(totalAmount)}</span> ₮
           </div>
         </div>
-
-        {hasPending ? (
-          <span className="pill pill-warn tabular">
-            <AlertCircle className="h-3.5 w-3.5" />
-            {unsentSales.length} илгээгээгүй
-          </span>
-        ) : (
-          <span className="pill pill-success">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            Синхрон
-          </span>
-        )}
-      </header>
+      </div>
 
       {/* Content */}
-      <main className="relative z-10 flex-1 overflow-y-auto slim-scroll p-4 sm:p-8">
-        <div className="max-w-[880px] mx-auto space-y-6 fade-up">
-          {!hasPending ? (
-            <div className="surface-3 p-10 sm:p-14 text-center relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-transparent to-transparent pointer-events-none" />
-              <div className="relative space-y-5">
-                <div className="inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-500/15 text-emerald-600">
-                  <CheckCircle2 className="h-10 w-10" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold tracking-tight">Бүгд илгээгдсэн</h2>
-                  <p className="mt-2 text-sm text-muted-foreground max-w-sm mx-auto">
-                    Таны төхөөрөмжид илгээгээгүй борлуулалт байхгүй. Касс үргэлжлүүлнэ үү.
-                  </p>
-                </div>
-                <button
-                  onClick={() => router.replace("/sale")}
-                  className="h-11 px-6 rounded-2xl bg-card border border-border hover:bg-muted text-sm font-medium inline-flex items-center gap-2 transition-colors"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Борлуулалт дэлгэц рүү буцах
-                </button>
-              </div>
+      <div className="flex-1 min-h-0 overflow-y-auto auto-scroll bg-muted/15">
+        {!hasPending ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 mb-4">
+              <CheckCircle2 className="h-7 w-7" />
             </div>
-          ) : (
-            <>
-              {/* Hero summary */}
-              <div className="surface-3 p-6 sm:p-8 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-72 h-72 rounded-full bg-amber-500/10 blur-3xl -translate-y-1/3 translate-x-1/3 pointer-events-none" />
-                <div className="relative grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-6 items-end">
-                  <div>
-                    <div className="text-xs text-muted-foreground uppercase tracking-[0.2em]">Илгээх нийт дүн</div>
-                    <div className="flex items-baseline gap-2 mt-1 tabular">
-                      <span className="text-5xl sm:text-6xl font-bold tracking-tight">{toMoney(totalAmount)}</span>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <span className="pill tabular">
-                        <Receipt className="h-3.5 w-3.5" />
-                        {unsentSales.length} борлуулалт
+            <h2 className="text-base font-semibold">Бүгд илгээгдсэн</h2>
+            <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+              Таны төхөөрөмжид илгээгээгүй борлуулалт байхгүй.
+            </p>
+          </div>
+        ) : (
+          <table className="w-full text-sm bg-card" style={{ tableLayout: "auto" }}>
+            <thead className="sticky top-0 bg-muted/60 backdrop-blur z-10">
+              <tr className="border-b border-border text-muted-foreground">
+                <th className="px-4 py-2.5 text-left font-medium whitespace-nowrap">#</th>
+                <th className="px-3 py-2.5 text-left font-medium whitespace-nowrap">Огноо, цаг</th>
+                <th className="px-3 py-2.5 text-left font-medium whitespace-nowrap">Бичиг №</th>
+                <th className="px-3 py-2.5 text-left font-medium whitespace-nowrap">Төрөл</th>
+                <th className="px-3 py-2.5 text-right font-medium whitespace-nowrap">Дүн</th>
+                <th className="px-3 py-2.5 text-left font-medium whitespace-nowrap">Төлөв</th>
+              </tr>
+            </thead>
+            <tbody>
+              {unsentAll.map((sale: any, idx: number) => (
+                <tr
+                  key={sale.id}
+                  className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors"
+                >
+                  <td className="px-4 py-2.5 text-muted-foreground tabular whitespace-nowrap">{idx + 1}</td>
+                  <td className="px-3 py-2.5 tabular text-foreground/80 whitespace-nowrap">
+                    {datetimeToStr(sale.createdAt)}
+                  </td>
+                  <td className="px-3 py-2.5 tabular text-foreground/80 whitespace-nowrap">{sale.id}</td>
+                  <td className="px-3 py-2.5 text-foreground/80 whitespace-nowrap">
+                    {sale.isDeleted
+                      ? "Устгасан"
+                      : (sale.chips?.length || 0) > 0 && (sale.items?.length || 0) === 0
+                        ? "Жетон"
+                        : "Борлуулалт"}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-bold tabular whitespace-nowrap">
+                    {toMoney(sale.total)}
+                  </td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    {sale.isDeleted ? (
+                      <span className="pill pill-warn">
+                        <Trash2 className="h-3 w-3" />
+                        Устгасан
                       </span>
-                      <span className="pill tabular">
-                        <TrendingUp className="h-3.5 w-3.5" />
-                        {itemCount} зүйл
+                    ) : (
+                      <span className="pill pill-warn">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                        Хүлээгдэж буй
                       </span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleUpload}
-                    disabled={uploading}
-                    className="sheen group h-12 px-6 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm flex items-center gap-2 shadow-[0_10px_30px_-10px_color-mix(in_oklch,var(--primary)_60%,transparent)] hover:brightness-110 active:translate-y-px transition-all disabled:opacity-50"
-                  >
-                    <Upload className={`h-[16px] w-[16px] ${uploading ? "animate-pulse" : ""}`} />
-                    {uploading ? "Илгээж байна..." : "Бүгдийг илгээх"}
-                  </button>
-                </div>
-              </div>
-
-              {/* List */}
-              <div className="surface-1 overflow-hidden">
-                <div className="px-5 py-3 border-b border-border/60 bg-muted/30 flex items-center justify-between">
-                  <span className="text-sm font-semibold">Илгээгдээгүй жагсаалт</span>
-                  <span className="text-xs text-muted-foreground tabular">{unsentSales.length} бичилт</span>
-                </div>
-                <div className="max-h-[460px] overflow-y-auto slim-scroll divide-y divide-border/50">
-                  {unsentSales.map((sale, index) => (
-                    <div
-                      key={sale.id}
-                      className="flex items-center gap-4 px-5 py-3 hover:bg-muted/40 transition-colors"
-                    >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary text-sm font-bold tabular">
-                        {index + 1}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold">
-                          {sale.items.length > 0 ? `${sale.items.length} зүйл` : "Жетон бичилт"}
-                        </div>
-                        <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                          <Clock className="h-3 w-3" />
-                          {datetimeToStr(sale.createdAt)}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-bold tabular">{toMoney(sale.total)}</div>
-                        <div className="text-xs text-amber-600 flex items-center gap-1 justify-end">
-                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                          Хүлээгдэж буй
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </main>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }

@@ -1,22 +1,26 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { usePosStore, useAlertStore } from "@/lib/store"
 import type { BillItem, LocalBill, LocalPayment, PendingSale, ChipAssignment } from "@/lib/store"
-import { toMoney } from "@/lib/format"
+import { toMoney, dateToStr, today } from "@/lib/format"
 
 export type SaleMode = "menu" | "tables" | "bills" | "jetons"
 
 export function useSale() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const {
     isPaired, posUser, cashSession, syncData, deviceName, pendingSales,
     addPendingSale, posLogout, openBills, saveOpenBill, payOpenBill,
   } = usePosStore()
   const { alertError, confirm, toastSuccess } = useAlertStore()
 
+  // SSR hydration mismatch-аас сэргийлж эхэндээ "tables" гэж тогтооно.
+  // URL-аас mode-ыг доорх useEffect-р mount-ын дараа sync хийнэ.
   const [saleMode, setSaleMode] = useState<SaleMode>("tables")
+
   const [searchMenu, setSearchMenu] = useState("")
   const [selectedGroupSid, setSelectedGroupSid] = useState<string | null>(null)
   const [billItems, setBillItems] = useState<BillItem[]>([])
@@ -28,9 +32,24 @@ export function useSale() {
   const [currentTableName, setCurrentTableName] = useState("")
   const [currentBillId, setCurrentBillId] = useState<string | null>(null)
 
+  useEffect(() => {
+    const m = searchParams?.get("mode")
+    const next = m === "bills" || m === "jetons" || m === "menu" ? (m as SaleMode) : "tables"
+    setSaleMode(next)
+    // Header navigation-аар (URL өөрчлөгдөхөд) ширээний идэвхтэй захиалгаас гарна,
+    // эс тэгвээс currentTableSid үлдэж isTableBill үргэлж true → room list нуугддаг.
+    if (next !== "menu") {
+      setBillItems([])
+      setCurrentTableSid(null)
+      setCurrentTableName("")
+      setCurrentBillId(null)
+    }
+  }, [searchParams])
+
   // Тооцооны хуудас state
   const [searchBills, setSearchBills] = useState("")
   const [billsFilter, setBillsFilter] = useState<"all" | "unsent" | "sent">("all")
+  const [billsDate, setBillsDate] = useState<string>(() => today())
 
   // Билл preview dialog
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false)
@@ -292,6 +311,42 @@ export function useSale() {
     toastSuccess(`Жетон хадгалагдлаа — ${toMoney(chipTotal)}`)
     setBillChips([])
     setChipOpen(false)
+  }
+
+  // Нэг алхамаар жетон бүртгэх (modal-аас дуудах) — staging-аар дамжихгүй
+  const saveSingleChip = (
+    dancer: { sid: string; name?: string; nickname?: string },
+    quantity: number,
+    price: number,
+    description?: string,
+  ) => {
+    if (!dancer?.sid || !(quantity > 0) || !(price > 0)) return false
+    const chip: ChipAssignment = {
+      id: `chip-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      dancerSid: dancer.sid,
+      dancerName: dancer.nickname || dancer.name || '',
+      quantity,
+      price,
+      total: quantity * price,
+      description,
+      createdAt: new Date().toISOString(),
+    }
+    const saleId = `chipsale-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    addPendingSale({
+      id: saleId,
+      createdAt: new Date().toISOString(),
+      closedAt: new Date().toISOString(),
+      tableSid: null,
+      tableDinnerSid: null,
+      cashierSid: posUser?.sid || "",
+      items: [],
+      chips: [chip],
+      payments: [],
+      total: chip.total,
+      uploaded: false,
+    })
+    toastSuccess(`Жетон хадгалагдлаа — ${toMoney(chip.total)}`)
+    return true
   }
 
   // ═══ Ширээ functions ═══
@@ -657,9 +712,19 @@ export function useSale() {
     }
   }
 
-  const filteredBills = useMemo(() =>
+  const dateFilteredBills = useMemo(() =>
     pendingSales.filter((sale) => {
       if (sale.isDeleted) return false
+      if (!billsDate) return true
+      // POS-н ажиллаж буй өдрөөр шүүнэ. docDate байхгүй хуучин бичлэгүүдэд createdAt-ыг fallback болгоно.
+      const d = sale.docDate || dateToStr(sale.createdAt)
+      return d === billsDate
+    }),
+    [pendingSales, billsDate]
+  )
+
+  const filteredBills = useMemo(() =>
+    dateFilteredBills.filter((sale) => {
       if (billsFilter === "unsent" && sale.uploaded) return false
       if (billsFilter === "sent" && !sale.uploaded) return false
       if (!searchBills) return true
@@ -669,18 +734,17 @@ export function useSale() {
         sale.items.some((item: any) => item.name?.toLowerCase().includes(lower))
       )
     }),
-    [pendingSales, searchBills, billsFilter]
+    [dateFilteredBills, searchBills, billsFilter]
   )
 
   const billsCounts = useMemo(() => {
     let unsent = 0, sent = 0
-    pendingSales.forEach((s: any) => {
-      if (s.isDeleted) return
+    dateFilteredBills.forEach((s: any) => {
       if (s.uploaded) sent++
       else unsent++
     })
     return { all: unsent + sent, unsent, sent }
-  }, [pendingSales])
+  }, [dateFilteredBills])
 
   const showMenuPanel = saleMode === "menu"
   const showBillsPanel = saleMode === "bills"
@@ -710,6 +774,7 @@ export function useSale() {
 
     // Bills list
     searchBills, setSearchBills,
+    billsDate, setBillsDate,
     filteredBills, billsFilter, setBillsFilter, billsCounts,
     handleDeleteSale, printClosedBill,
 
@@ -730,7 +795,7 @@ export function useSale() {
     selectDancer, openDancerChange,
 
     // Chip (жетон) — билл/төлбөрөөс хамааралгүй
-    chipOpen, setChipOpen, billChips, addChip, removeChip, savePendingChips,
+    chipOpen, setChipOpen, billChips, addChip, removeChip, savePendingChips, saveSingleChip,
     chipListOpen, setChipListOpen,
 
     // Nav

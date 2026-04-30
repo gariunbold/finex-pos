@@ -1,14 +1,18 @@
 "use client"
 
 import { useEffect } from "react"
+import { usePathname } from "next/navigation"
+import { AppHeader } from "@/components/app-header"
 
 export default function PosDesktopLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const pathname = usePathname()
+  const hideHeader = pathname === "/login" || pathname === "/"
+
   useEffect(() => {
-    // Check if running in Tauri
     if (typeof window !== "undefined") {
       // @ts-ignore
       const isTauri = !!window.__TAURI__
@@ -19,8 +23,9 @@ export default function PosDesktopLayout({
   }, [])
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-background">
-      {children}
+    <div className="h-screen w-screen overflow-hidden bg-background flex flex-col">
+      {!hideHeader && <AppHeader />}
+      <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
     </div>
   )
 }
