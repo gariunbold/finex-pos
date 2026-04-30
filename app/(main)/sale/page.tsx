@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { Suspense, useMemo, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -17,6 +17,14 @@ import { BillDetailDialog } from "./bill-detail"
 import { PaymentDialog, PrintPreviewDialog, DancerPickerDialog } from "./dialogs"
 
 export default function PosSalePage() {
+  return (
+    <Suspense fallback={null}>
+      <PosSaleContent />
+    </Suspense>
+  )
+}
+
+function PosSaleContent() {
   const sale = useSale()
   const [openBillDetail, setOpenBillDetail] = useState<any | null>(null)
 
